@@ -27,7 +27,7 @@ cd /root/Tor-Router
 ./dist/tor-router --run
 ```
 
-یا با وب پنل:
+یا با وب پنل (بزودی):
 
 ```bash
 ./dist/tor-router --web-dir ./web
