@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="fa" id="htmlRoot">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Country Flags - Tor Exit Nodes | پرچم‌های کشورها</title>
+    <style>
+        /* ===== متغیرهای تم ===== */
+        :root {
+            --bg-body: #f0f2f5;
+            --bg-container: #ffffff;
+            --bg-item: #f8f9fa;
+            --border-item: #e9ecef;
+            --text-primary: #1a1a2e;
+            --text-secondary: #212529;
+            --text-code: #495057;
+            --bg-code: #e9ecef;
+            --shadow: 0 4px 12px rgba(0,0,0,0.1);
+            --btn-bg: #1a1a2e;
+            --btn-hover: #2d2d5e;
+            --btn-text: #ffffff;
+            --btn-border: none;
+            --transition: 0.3s;
+            --status-color: #6c757d;
+        }
+        [data-theme="dark"] {
+            --bg-body: #1a1a2e;
+            --bg-container: #16213e;
+            --bg-item: #1f2a4a;
+            --border-item: #2a3a5e;
+            --text-primary: #e8e8f0;
+            --text-secondary: #d0d0e0;
+            --text-code: #a0b0d0;
+            --bg-code: #2a3a5e;
+            --shadow: 0 4px 12px rgba(0,0,0,0.4);
+            --btn-bg: #4a6fa5;
+            --btn-hover: #5a7fb5;
+            --btn-text: #ffffff;
+            --btn-border: 1px solid #6a8fc5;
+            --status-color: #a0b0c0;
+        }
+        /* ===== استایل‌های پایه ===== */
+        body {
+            font-family: "Twemoji Country Flags", "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+            background: var(--bg-body);
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            transition: background var(--transition), color var(--transition);
+        }
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            background: var(--bg-container);
+            border-radius: 18px;
+            padding: 16px 33px 22px 33px;
+            box-shadow: var(--shadow);
+            transition: background var(--transition), box-shadow var(--transition);
+        }
+        /* ===== هدر ===== */
+        .header {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 6px 0 10px 0;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-item);
+            transition: border-color var(--transition);
+        }
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
+            justify-content: center;
+            flex: 1;
+        }
+        .header-title h1 {
+            color: var(--text-primary);
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            transition: color var(--transition);
+            text-align: center;
+        }
+        .header-title .title-emoji {
+            font-size: 20px;
+        }
+        .header-left-controls,
+        .header-right-controls {
+            position: absolute;
+            top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header-left-controls {
+            left: 12px;
+        }
+        .header-right-controls {
+            right: 12px;
+        }
+        /* ===== دکمه‌ها ===== */
+        .btn {
+            padding: 8px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            border: var(--btn-border);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--btn-bg);
+            color: var(--btn-text);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            letter-spacing: 0.3px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+            pointer-events: none;
+            border-radius: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+            background: var(--btn-hover);
+        }
+        .btn:active {
+            transform: translateY(0px) scale(0.98);
+        }
+        .btn .icon {
+            font-size: 15px;
+            line-height: 1;
+        }
+        .btn-icon-only {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            justify-content: center;
+            border-radius: 10px;
+        }
+        .btn-icon-only::after {
+            border-radius: 10px;
+        }
+        /* Sample buttons adapted from dist/web styles (compact) */
+        .sample-btn-lang {
+            padding: 6px 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: #f1f5f9;
+            border-radius: 8px;
+            border: 1px solid var(--border-item);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            transition: background var(--transition), color var(--transition);
+        }
+        .sample-btn-lang:hover {
+            background: #e9edf5;
+        }
+        [data-theme="dark"] .sample-btn-lang {
+            background: #223049;
+            color: var(--text-secondary);
+            border-color: #2a3a5e;
+            box-shadow: none;
+        }
+        [data-theme="dark"] .sample-btn-lang:hover {
+            background: #2a3a5e;
+        }
+
+        .sample-btn-theme {
+            padding: 6px;
+            color: var(--text-secondary);
+            background: transparent;
+            border-radius: 8px;
+            transition: color var(--transition), background var(--transition);
+        }
+        .sample-btn-theme:hover {
+            background: rgba(0,0,0,0.04);
+        }
+        [data-theme="dark"] .sample-btn-theme:hover {
+            background: rgba(255,255,255,0.03);
+        }
+        .btn-lang {
+            --btn-bg: #2d4a7a;
+            --btn-hover: #3d5a8a;
+        }
+        [data-theme="dark"] .btn-lang {
+            --btn-bg: #4a6fa5;
+            --btn-hover: #5a7fb5;
+        }
+        .btn-theme {
+            --btn-bg: #6c757d;
+            --btn-hover: #7c858d;
+        }
+        [data-theme="dark"] .btn-theme {
+            --btn-bg: #f0c040;
+            --btn-hover: #f5d060;
+            color: #1a1a2e;
+        }
+        /* ===== وضعیت ===== */
+        .status-bar {
+            padding: 12px 0 10px 0;
+            color: var(--status-color);
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-item);
+            transition: all var(--transition);
+        }
+        .status-bar .status-text {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-bar .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 3px solid var(--border-item);
+            border-top: 3px solid var(--btn-bg);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status-bar .count-info {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        /* ===== گرید پرچم‌ها ===== */
+        .flag-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 7px 14px;
+            padding-top: 16px;
+        }
+        .flag-item {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 5px 9px;
+            background: var(--bg-item);
+            border-radius: 7px;
+            font-size: 18px;
+            border: 1px solid var(--border-item);
+            transition: all var(--transition);
+            cursor: pointer;
+        }
+        .flag-item:hover {
+            background: var(--bg-code);
+            transform: scale(1.02);
+        }
+        .flag-item.copied {
+            animation: copyFlash 0.6s ease;
+        }
+        @keyframes copyFlash {
+            0% { box-shadow: 0 0 0 0 rgba(40,167,69,0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(40,167,69,0); }
+            100% { box-shadow: 0 0 0 0 rgba(40,167,69,0); }
+        }
+        .flag-item .emoji {
+            font-size: 22px;
+            min-width: 31px;
+            text-align: center;
+        }
+        .flag-item .name {
+            font-size: 13px;
+            color: var(--text-secondary);
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: color var(--transition);
+            cursor: pointer;
+        }
+        .flag-item .code {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-code);
+            font-family: 'Courier New', monospace;
+            background: var(--bg-code);
+            padding: 1px 7px;
+            border-radius: 4px;
+            min-width: 30px;
+            text-align: center;
+            transition: all var(--transition);
+            cursor: pointer;
+        }
+        .flag-item .code:hover {
+            background: #28a745;
+            color: #fff;
+        }
+        .flag-item .count {
+            font-size: 11px;
+            color: var(--text-code);
+            background: var(--bg-code);
+            padding: 1px 8px;
+            border-radius: 12px;
+            min-width: 20px;
+            text-align: center;
+            font-weight: 600;
+            transition: all var(--transition);
+        }
+        /* ===== واکنش‌گرا ===== */
+        @media (max-width: 600px) {
+            .container {
+                padding: 12px 16px 16px 16px;
+            }
+            .flag-grid {
+                grid-template-columns: 1fr;
+            }
+            .flag-item {
+                padding: 10px 14px;
+                gap: 12px;
+            }
+            .flag-item .name {
+                font-size: 16px;
+            }
+            .flag-item .emoji {
+                font-size: 26px;
+                min-width: 36px;
+            }
+            .flag-item .code {
+                font-size: 14px;
+                padding: 2px 8px;
+            }
+            .flag-item .count {
+                font-size: 14px;
+                padding: 2px 10px;
+            }
+            .header {
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+                padding-top: 50px;
+            }
+            .header-controls {
+                top: 4px;
+            }
+            .header-title h1 {
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+        @media (max-width: 400px) {
+            .flag-grid {
+                grid-template-columns: 1fr;
+            }
+            .flag-item {
+                padding: 8px 12px;
+            }
+            .flag-item .name {
+                font-size: 15px;
+            }
+            .flag-item .emoji {
+                font-size: 24px;
+                min-width: 32px;
+            }
+            .flag-item .code {
+                font-size: 13px;
+                min-width: 28px;
+                padding: 2px 6px;
+            }
+            .flag-item .count {
+                font-size: 13px;
+                padding: 2px 8px;
+            }
+        }
+        /* ===== حالت خالی ===== */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            font-size: 16px;
+        }
+        .empty-state .empty-icon {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 12px;
+        }
+        /* ===== Tooltip ===== */
+        .copy-tooltip {
+            position: fixed;
+            background: #28a745;
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.2s, transform 0.2s;
+            z-index: 9999;
+            white-space: nowrap;
+        }
+        .copy-tooltip.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* ===== سفارشی‌سازی هدر ===== */
+        .title-img {
+            width: 38px;
+            height: 38px;
+            object-fit: contain;
+        }
+        .title-text-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .count-info {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-weight: 600;
+        }
+        .pulser {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #28a745;
+            margin-right: 8px; /* RTL */
+            margin-left: 8px; /* LTR */
+            box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+            animation: pulse 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
+            vertical-align: middle;
+        }
+        .pulser.hidden {
+            display: none;
+        }
+        [dir="ltr"] .pulser {
+            margin-right: 0;
+            margin-left: 8px;
+        }
+        [dir="rtl"] .pulser {
+            margin-right: 8px;
+            margin-left: 0;
+        }
+        @keyframes pulse {
+            to {
+                box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+            }
+        }
+    </style>
+<base target="_blank">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                <img src="https://freesvg.org/img/World-Flag-Buttons-Globe.png" alt="Globe" class="title-img" />
+                <div class="title-text-group">
+                    <h1 id="pageTitle"><span id="pageTitleText">کشورهای دارای Tor Exit Node</span><span class="pulser" id="pulser"></span></h1>
+                    <div class="count-info" id="countInfo"></div>
+                </div>
+            </div>
+            <div class="header-left-controls">
+                <button id="toggleThemeBtn" type="button" class="sample-btn-theme" title="تغییر تم">
+                    <span id="themeIcon">🌙</span>
+                </button>
+            </div>
+            <div class="header-right-controls">
+                <button id="toggleLangBtn" type="button" class="sample-btn-lang" title="تغییر زبان">
+                    <span id="langLabel">FA</span>
+                </button>
+            </div>
+        </div>
+        <div class="flag-grid" id="flagGrid">
+            <div class="empty-state">
+                <span class="empty-icon">⏳</span>
+                <span id="loadingText">در حال بارگذاری داده‌ها...</span>
+            </div>
+        </div>
+    </div>
+    <div class="copy-tooltip" id="copyTooltip">کپی شد!</div>
+    <!-- ===== Polyfill برای نمایش پرچم‌ها در ویندوز ===== -->
+    <script type="module">
+        import { polyfillCountryFlagEmojis } from "https://cdn.skypack.dev/country-flag-emoji-polyfill";
+        polyfillCountryFlagEmojis();
+    </script>
+    <!-- ===== اسکریپت اصلی ===== -->
+    <script>
+        // ===== دیکشنری نام فارسی کشورها =====
+        const countryNamesEn = new Intl.DisplayNames(["en"], { type: "region" });
+        const countryNamesFa = new Intl.DisplayNames(["fa"], { type: "region" });
+
+        function getFaCountryName(code) {
+            try {
+                return countryNamesFa.of(code) || code;
+            } catch (e) {
+                return code;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const countInfo = document.getElementById('countInfo');
+            const flagGrid = document.getElementById('flagGrid');
+            const pageTitleText = document.getElementById('pageTitleText');
+            const loadingText = document.getElementById('loadingText');
+            const htmlRoot = document.getElementById('htmlRoot');
+            const pulser = document.getElementById('pulser');
+
+            function getFlagEmoji(countryCode) {
+                const codePoints = countryCode
+                    .toUpperCase()
+                    .split('')
+                    .map(char => 127397 + char.charCodeAt(0));
+                return String.fromCodePoint(...codePoints);
+            }
+
+            function getCountryName(code) {
+                try {
+                    return countryNamesEn.of(code) || code;
+                } catch (e) {
+                    return code;
+                }
+            }
+
+            // ===== ترجمه‌ها =====
+            const i18n = {
+                fa: {
+                    title: 'کشورهای دارای Tor Exit Node',
+                    loading: 'در حال دریافت اطلاعات از سرور Tor...',
+                    fetching: 'در حال دریافت اطلاعات از سرور Tor...',
+                    noData: 'داده‌ای برای نمایش وجود ندارد',
+                    error: 'خطا در دریافت داده',
+                    countries: 'کشور',
+                    relays: 'گره خروجی فعال',
+                    copied: 'کپی شد!',
+                    clickToCopy: 'برای کپی کلیک کنید',
+                    copyCode: 'کد کشور کپی شد',
+                    copyName: 'نام کشور کپی شد',
+                    langTooltip: 'تغییر زبان',
+                    themeTooltip: 'تغییر تم'
+                },
+                en: {
+                    title: 'Countries with Tor Exit Nodes',
+                    loading: 'Fetching data from Tor server...',
+                    fetching: 'Fetching data from Tor server...',
+                    noData: 'No data to display',
+                    error: 'Error fetching data',
+                    countries: 'countries',
+                    relays: 'active exit relays',
+                    copied: 'Copied!',
+                    clickToCopy: 'Click to copy',
+                    copyCode: 'Country code copied',
+                    copyName: 'Country name copied',
+                    langTooltip: 'Change language',
+                    themeTooltip: 'Change theme'
+                }
+            };
+
+            let currentLang = 'fa';
+            let currentData = [];
+
+            let currentStatus = '';
+            let currentErrorMessage = '';
+
+            function t(key) {
+                return i18n[currentLang][key] || key;
+            }
+
+            function updateStatusText() {
+                if (currentStatus === 'fetching' && loadingText) {
+                    loadingText.textContent = t('fetching');
+                }
+            }
+
+            function updateDirection() {
+                htmlRoot.setAttribute('dir', currentLang === 'fa' ? 'rtl' : 'ltr');
+                htmlRoot.setAttribute('lang', currentLang === 'fa' ? 'fa' : 'en');
+            }
+
+            function updateTexts() {
+                if (pageTitleText) pageTitleText.textContent = t('title');
+                if (loadingText) loadingText.textContent = t('loading');
+                document.getElementById('toggleLangBtn').title = t('langTooltip');
+                document.getElementById('toggleThemeBtn').title = t('themeTooltip');
+                const langLabelEl = document.getElementById('langLabel');
+                if (langLabelEl) langLabelEl.textContent = currentLang === 'fa' ? 'EN' : 'FA';
+                updateStatusText();
+            }
+
+            function renderCountries(data) {
+                if (!data || data.length === 0) {
+                    flagGrid.innerHTML = `
+                        <div class="empty-state">
+                            <span class="empty-icon">📭</span>
+                            ${t('noData')}
+                        </div>
+                    `;
+                    return;
+                }
+                let html = '';
+                for (const country of data) {
+                    const nameEn = country.name;
+                    const nameFa = country.faName || country.name;
+                    const displayName = currentLang === 'fa' ? nameFa : nameEn;
+
+                    html += `
+                            <div class="flag-item" data-code="${country.code}" data-name="${displayName}">
+                                <span class="emoji">${country.flag}</span>
+                                <span class="name" title="${t('clickToCopy')}" tabindex="0" role="button">${displayName}</span>
+                                <span class="code" title="${t('clickToCopy')}" tabindex="0" role="button">${country.code}</span>
+                                <span class="count">${country.count}</span>
+                            </div>
+                        `;
+                }
+                flagGrid.innerHTML = html;
+                attachCopyHandlers();
+            }
+
+            // ===== کپی کردن با کلیک =====
+            function copyToClipboard(text) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    return navigator.clipboard.writeText(text);
+                }
+                return new Promise((resolve, reject) => {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    try {
+                        const successful = document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        if (successful) resolve();
+                        else reject(new Error('copy failed'));
+                    } catch (err) {
+                        document.body.removeChild(ta);
+                        reject(err);
+                    }
+                });
+            }
+
+            function showTooltipForElement(el, text) {
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top;
+                showTooltip(x, y, text);
+            }
+
+            function attachCopyHandlers() {
+                const items = document.querySelectorAll('.flag-item');
+                items.forEach(item => {
+                    // clicking the item (outside name/code) copies "Name (CC)"
+                    item.addEventListener('click', function(e) {
+                        const code = this.getAttribute('data-code');
+                        const name = this.getAttribute('data-name');
+                        const textToCopy = `${name} (${code})`;
+                        copyToClipboard(textToCopy).then(() => {
+                            const x = e.clientX || (this.getBoundingClientRect().left + this.getBoundingClientRect().width / 2);
+                            const y = e.clientY || this.getBoundingClientRect().top;
+                            showTooltip(x, y, t('copied'));
+                            this.classList.add('copied');
+                            setTimeout(() => this.classList.remove('copied'), 600);
+                        }).catch(() => {
+                            const x = e.clientX || (this.getBoundingClientRect().left + this.getBoundingClientRect().width / 2);
+                            const y = e.clientY || this.getBoundingClientRect().top;
+                            showTooltip(x, y, t('copied'));
+                            this.classList.add('copied');
+                            setTimeout(() => this.classList.remove('copied'), 600);
+                        });
+                    });
+
+                    const codeEl = item.querySelector('.code');
+                    if (codeEl) {
+                        // hover/focus: show 'Click to copy'
+                        codeEl.addEventListener('mouseenter', function(e) {
+                            e.stopPropagation();
+                            const rect = codeEl.getBoundingClientRect();
+                            showTooltip(rect.left + rect.width / 2, rect.top, t('clickToCopy'), 0);
+                        });
+                        codeEl.addEventListener('mouseleave', function() { hideTooltip(); });
+                        codeEl.addEventListener('focus', function(e) {
+                            e.stopPropagation();
+                            const rect = codeEl.getBoundingClientRect();
+                            showTooltip(rect.left + rect.width / 2, rect.top, t('clickToCopy'), 0);
+                        });
+                        codeEl.addEventListener('blur', function() { hideTooltip(); });
+
+                        codeEl.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            hideTooltip();
+                            const code = item.getAttribute('data-code');
+                            copyToClipboard(code).then(() => {
+                                const x = e.clientX || (codeEl.getBoundingClientRect().left + codeEl.getBoundingClientRect().width / 2);
+                                const y = e.clientY || codeEl.getBoundingClientRect().top;
+                                showTooltip(x, y, t('copyCode'));
+                                item.classList.add('copied');
+                                setTimeout(() => item.classList.remove('copied'), 600);
+                            }).catch(() => {
+                                showTooltipForElement(codeEl, t('copyCode'));
+                                item.classList.add('copied');
+                                setTimeout(() => item.classList.remove('copied'), 600);
+                            });
+                        });
+                        codeEl.addEventListener('keydown', function(e) {
+                            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                                e.preventDefault();
+                                this.click();
+                            }
+                        });
+                    }
+
+                    const nameEl = item.querySelector('.name');
+                    if (nameEl) {
+                        // hover/focus: show 'Click to copy'
+                        nameEl.addEventListener('mouseenter', function(e) {
+                            e.stopPropagation();
+                            const rect = nameEl.getBoundingClientRect();
+                            showTooltip(rect.left + rect.width / 2, rect.top, t('clickToCopy'), 0);
+                        });
+                        nameEl.addEventListener('mouseleave', function() { hideTooltip(); });
+                        nameEl.addEventListener('focus', function(e) {
+                            e.stopPropagation();
+                            const rect = nameEl.getBoundingClientRect();
+                            showTooltip(rect.left + rect.width / 2, rect.top, t('clickToCopy'), 0);
+                        });
+                        nameEl.addEventListener('blur', function() { hideTooltip(); });
+
+                        nameEl.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            hideTooltip();
+                            const name = item.getAttribute('data-name');
+                            copyToClipboard(name).then(() => {
+                                const x = e.clientX || (nameEl.getBoundingClientRect().left + nameEl.getBoundingClientRect().width / 2);
+                                const y = e.clientY || nameEl.getBoundingClientRect().top;
+                                showTooltip(x, y, t('copyName'));
+                                item.classList.add('copied');
+                                setTimeout(() => item.classList.remove('copied'), 600);
+                            }).catch(() => {
+                                showTooltipForElement(nameEl, t('copyName'));
+                                item.classList.add('copied');
+                                setTimeout(() => item.classList.remove('copied'), 600);
+                            });
+                        });
+                        nameEl.addEventListener('keydown', function(e) {
+                            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                                e.preventDefault();
+                                this.click();
+                            }
+                        });
+                    }
+                });
+            }
+
+            let tooltipTimer = null;
+            function showTooltip(x, y, text, duration = 1500) {
+                const tooltip = document.getElementById('copyTooltip');
+                if (tooltipTimer) {
+                    clearTimeout(tooltipTimer);
+                    tooltipTimer = null;
+                }
+                tooltip.textContent = text;
+                tooltip.style.left = (x - tooltip.offsetWidth / 2) + 'px';
+                tooltip.style.top = (y - 40) + 'px';
+                tooltip.classList.add('show');
+                if (duration > 0) {
+                    tooltipTimer = setTimeout(() => {
+                        tooltip.classList.remove('show');
+                        tooltipTimer = null;
+                    }, duration);
+                }
+            }
+
+            function hideTooltip() {
+                const tooltip = document.getElementById('copyTooltip');
+                if (tooltipTimer) {
+                    clearTimeout(tooltipTimer);
+                    tooltipTimer = null;
+                }
+                tooltip.classList.remove('show');
+            }
+
+            // ===== دریافت داده =====
+            async function fetchAndDisplayCountries() {
+                try {
+                    currentStatus = 'fetching';
+                    currentErrorMessage = '';
+                    updateStatusText();
+                    countInfo.textContent = "";
+                    if (pulser) pulser.classList.remove('hidden');
+                    // Now fetches from cached backend proxy
+                    const response = await fetch("/api/countries");
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    if (!data.relays) {
+                        throw new Error("Invalid response from server");
+                    }
+                    const countries = {};
+                    for (const relay of data.relays) {
+                        if (!relay.country) continue;
+                        const code = relay.country.toUpperCase();
+                        if (!countries[code]) {
+                            const nameEn = getCountryName(code);
+                            countries[code] = {
+                                code: code,
+                                name: nameEn,
+                                faName: getFaCountryName(code),
+                                flag: getFlagEmoji(code),
+                                count: 0
+                            };
+                        }
+                        countries[code].count++;
+                    }
+                    const result = Object.values(countries)
+                        .filter(item => item.count > 0)
+                        .sort((a, b) => b.count - a.count);
+                    currentData = result;
+                    renderCountries(result);
+                    const totalRelays = data.relays.length;
+                    countInfo.textContent = `${result.length} ${t('countries')} | ${totalRelays} ${t('relays')}`;
+                    currentStatus = 'complete';
+                    updateStatusText();
+                    // Pulser stays visible to indicate 'Live/Online' status
+                } catch (err) {
+                    console.error(err);
+                    currentStatus = 'error';
+                    currentErrorMessage = err.message;
+                    updateStatusText();
+                    countInfo.textContent = "";
+                    if (pulser) pulser.classList.add('hidden');
+                    flagGrid.innerHTML = `
+                        <div class="empty-state">
+                            <span class="empty-icon">⚠️</span>
+                            ${t('error')}: ${err.message}
+                        </div>
+                    `;
+                }
+            }
+
+            // ===== Event Listeners =====
+            const toggleLangBtn = document.getElementById('toggleLangBtn');
+            const langLabelEl = document.getElementById('langLabel');
+            toggleLangBtn.addEventListener('click', function() {
+                currentLang = currentLang === 'fa' ? 'en' : 'fa';
+                updateDirection();
+                updateTexts();
+                renderCountries(currentData);
+                if (langLabelEl) langLabelEl.textContent = currentLang === 'fa' ? 'EN' : 'FA';
+                // Update count info text
+                if (currentData.length > 0) {
+                    const totalRelays = currentData.reduce((sum, c) => sum + c.count, 0);
+                    countInfo.textContent = `${currentData.length} ${t('countries')} | ${totalRelays} ${t('relays')}`;
+                }
+            });
+
+            // ===== تغییر تم =====
+            const toggleThemeBtn = document.getElementById('toggleThemeBtn');
+            const themeIcon = document.getElementById('themeIcon');
+            let isDark = false;
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                isDark = true;
+                htmlRoot.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = '☀️';
+            }
+            toggleThemeBtn.addEventListener('click', function() {
+                isDark = !isDark;
+                if (isDark) {
+                    htmlRoot.setAttribute('data-theme', 'dark');
+                    themeIcon.textContent = '☀️';
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    htmlRoot.removeAttribute('data-theme');
+                    themeIcon.textContent = '🌙';
+                    localStorage.setItem('theme', 'light');
+                }
+            });
+
+            // ===== اجرای اصلی =====
+            updateDirection();
+            updateTexts();
+            fetchAndDisplayCountries();
+        });
+    </script>
+</body>
+</html>

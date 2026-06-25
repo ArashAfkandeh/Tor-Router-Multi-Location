@@ -30,10 +30,8 @@ cd /root/Tor-Router
 یا با وب پنل (بزودی):
 
 ```bash
-/root/Tor-Router/dist/tor-router-manager --web-dir /root/Tor-Router/webpanel
+./dist/tor-router --web-dir ./web
 ```
-
-> دقت کنید: مسیر `--web-dir` نسبت به دایرکتوری جاری برنامه محاسبه می‌شود. اگر از پوشه‌ی ریشه‌ی پروژه خارج شده‌اید، مسیر کامل `/root/Tor-Router/webpanel` را بدهید.
 
 ## پشتیبانی چند کشور خروجی
 

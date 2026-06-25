@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50 dark:bg-slate-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tor Router Panel</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%237d4698'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'/%3E%3C/svg%3E">
+    <!-- Fallback to CDN for runtime Tailwind if build isn't present, to ensure it works beautifully -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f5f3f7',
+                            100: '#e1d4e6',
+                            500: '#7d4698',
+                            600: '#64387a',
+                            900: '#2b1436',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" defer>
+      import { polyfillCountryFlagEmojis } from "https://cdn.skypack.dev/country-flag-emoji-polyfill";
+      polyfillCountryFlagEmojis();
+    </script>
+</head>
+<body class="h-full text-slate-800 dark:text-slate-200 antialiased font-sans">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Auth View -->
+        <main id="view-login" class="hidden flex-1 flex items-center justify-center p-4">
+            <div class="w-full max-w-md bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 relative">
+                <div class="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_top_left,_rgba(125,70,152,0.18),_transparent_25%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_18%)]"></div>
+
+                <!-- Corner controls: language (left) and theme (right) -->
+                <button id="btn-theme-login" type="button" class="absolute left-3 top-3 p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors z-20" title="Toggle Theme">
+                    <!-- Sun Icon (shown in dark mode) -->
+                    <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                    <!-- Moon Icon (shown in light mode) -->
+                    <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                </button>
+
+                <button id="btn-lang-login" type="button" class="absolute right-3 top-3 px-2 py-1 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md transition-colors shadow-sm border border-slate-200 dark:border-slate-700 z-20" title="Toggle Language">FA</button>
+
+                <div class="relative p-8 text-center pt-10">
+                    <div class="mx-auto w-16 h-16 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30 mb-6">
+                        <svg class="w-8 h-8 text-white" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                        </svg>
+                    </div>
+                    
+                    <h2 data-i18n="login_title" class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Tor Router Control</h2>
+                    <p data-i18n="login_desc" class="text-slate-500 dark:text-slate-400 mt-2">Sign in to manage your private nodes.</p>
+                </div>
+                <div class="relative p-8 pt-0">
+                    <form id="form-login" class="space-y-6">
+                        <div>
+                            <label data-i18n="login_user" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Username</label>
+                            <input type="text" id="login-username" required class="mt-1 block w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
+                        </div>
+                        <div>
+                            <label data-i18n="login_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
+                            <input type="password" id="login-password" required class="mt-1 block w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
+                        </div>
+                        <div id="login-error" class="hidden text-sm text-red-600 dark:text-red-400 font-medium"></div>
+                        <button data-i18n="login_btn" type="submit" class="w-full py-3 px-4 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-lg shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50">
+                            Sign In
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <!-- Dashboard View -->
+        <div id="view-dashboard" class="hidden flex-col min-h-screen bg-slate-50 dark:bg-slate-900">
+            <!-- Nav -->
+            <nav class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm flex-wrap gap-y-3">
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 bg-brand-500 rounded-lg flex items-center justify-center shadow-md shrink-0">
+                        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0">
+                        <h1 data-i18n="nav_title" class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight leading-tight">Tor Router</h1>
+                        <p class="hidden sm:block text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Support developer on Telegram and GitHub</p>
+                    </div>
+                </div>
+                <div class="hidden md:flex items-center gap-2">
+                    <img src="https://github.com/ArashAfkandeh.png?size=80" alt="Arash Afkandeh" class="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm object-cover">
+                    <a href="tg://resolve?domain=ArashAfkandeh" class="inline-flex items-center gap-2 rounded-full bg-brand-600 text-white text-xs font-semibold px-3 py-2 hover:bg-brand-500 transition" title="Contact Developer on Telegram">
+                        <span>Telegram</span>
+                    </a>
+                    <a href="https://github.com/ArashAfkandeh/Tor-Router-Multi-Location" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3 py-2 hover:bg-slate-200 dark:hover:bg-slate-800 transition" title="Star the project on GitHub">
+                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.16 6.84 9.49.5.09.68-.22.68-.48 0-.24-.01-.87-.01-1.71-2.78.61-3.37-1.34-3.37-1.34-.45-1.16-1.1-1.47-1.1-1.47-.9-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.67-.1-.26-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0112 6.8c.85.004 1.71.11 2.51.32 1.9-1.29 2.74-1.02 2.74-1.02.55 1.39.2 2.41.1 2.67.64.69 1.03 1.58 1.03 2.67 0 3.85-2.34 4.69-4.57 4.95.36.31.69.92.69 1.85 0 1.33-.01 2.4-.01 2.72 0 .27.18.58.69.48A10.009 10.009 0 0022 12c0-5.52-4.48-10-10-10z"/></svg>
+                        <span>Star</span>
+                    </a>
+                </div>
+                <div class="flex items-center gap-1 sm:gap-3 overflow-x-auto no-scrollbar">
+                    <button id="btn-lang" class="px-2 py-1 text-xs sm:text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md transition-colors shadow-sm border border-slate-200 dark:border-slate-700 shrink-0" title="Toggle Language">
+                        EN
+                    </button>
+                    <button id="btn-theme" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Toggle Theme">
+                        <!-- Sun Icon (shown in dark mode) -->
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                        <!-- Moon Icon (shown in light mode) -->
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                    </button>
+                    <button id="btn-refresh" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Refresh">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    </button>
+                    <button id="btn-settings" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Settings">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </button>
+                    <button data-i18n="nav_logout" id="btn-logout" class="px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition-colors shrink-0">
+                        Logout
+                    </button>
+                </div>
+            </nav>
+
+            <main class="flex-1 w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                <!-- Action Bar -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <div>
+                        <h2 data-i18n="dash_title" class="text-2xl font-bold text-slate-900 dark:text-white">Exit Nodes</h2>
+                        <p data-i18n="dash_desc" class="text-slate-500 dark:text-slate-400 mt-1">Manage and monitor active Tor routing nodes.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 sm:gap-3">
+                        <a href="Countries.html" target="_blank" class="px-4 py-2 sm:px-5 sm:py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-md transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span data-i18n="btn_countries">Tor Countries</span>
+                        </a>
+                        <button id="btn-restart-all" class="px-4 py-2 sm:px-5 sm:py-2.5 bg-slate-600 hover:bg-slate-700 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-slate-500 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span data-i18n="btn_restart_all">Restart All</span>
+                        </button>
+                        <button id="btn-create-route" class="px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium rounded-lg shadow-md transition-all focus:ring-2 focus:ring-brand-500 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            <span data-i18n="btn_add_node">Add Node</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Metrics Overview -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" id="metrics-container">
+                    <!-- Populated via JS -->
+                </div>
+
+                <!-- Nodes Grid -->
+                <div id="nodes-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    <!-- Populated via JS -->
+                </div>
+            </main>
+        </div>
+
+        <!-- Node Modal -->
+        <div id="modal-route" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+                    <h3 id="modal-route-title" data-i18n="modal_route_title" class="text-lg font-semibold text-slate-900 dark:text-white">Create Node</h3>
+                    <button class="modal-close p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <form id="form-route" class="space-y-5">
+                        <input type="hidden" id="route-id">
+                        <div>
+                            <label data-i18n="modal_route_name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
+                            <input type="text" id="route-name" placeholder="e.g. node-1" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 focus:border-brand-500 outline-none">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label data-i18n="modal_route_bind" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Bind Address</label>
+                                <input type="text" id="route-bind" placeholder="127.0.0.1" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label data-i18n="modal_route_port" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Input Port</label>
+                                <input type="number" id="route-port" placeholder="9050" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label data-i18n="modal_route_country" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Country Code</label>
+                                <input type="text" id="route-country" placeholder="US, DE" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none uppercase" maxlength="2">
+                            </div>
+                            <div>
+                                <label data-i18n="modal_route_interval" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Test Interval (Min)</label>
+                                <input type="number" id="route-interval" placeholder="10" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label data-i18n="modal_route_swap" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Swap (Hrs)</label>
+                                <input type="number" id="route-swap" placeholder="24" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label data-i18n="modal_route_user" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username (Opt)</label>
+                                <input type="text" id="route-user" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label data-i18n="modal_route_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password (Opt)</label>
+                                <input type="password" id="route-pass" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                        </div>
+                        <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                            <button data-i18n="modal_btn_cancel" type="button" class="modal-close px-5 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancel</button>
+                            <button id="modal-route-btn-save" data-i18n="modal_route_btn_save" type="submit" class="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none">Save Node</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="modal-settings" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+                    <h3 data-i18n="modal_set_title" class="text-lg font-semibold text-slate-900 dark:text-white">Daemon Settings</h3>
+                    <button class="modal-close-settings p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <form id="form-settings" class="space-y-5">
+                        <h4 data-i18n="modal_set_net" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Network</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label data-i18n="modal_set_web_bind" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Web Panel Bind</label>
+                                <input type="text" id="set-web-bind" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                            </div>
+                            <div>
+                                <label data-i18n="modal_set_port" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Port</label>
+                                <input type="number" id="set-web-port" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                            </div>
+                        </div>
+
+                        <h4 data-i18n="modal_set_auth" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-6 mb-2">Admin Credentials</h4>
+                        <div>
+                            <label data-i18n="modal_set_user" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Admin Username</label>
+                            <input type="text" id="set-admin-user" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label data-i18n="modal_set_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">New Admin Password</label>
+                            <input type="password" id="set-admin-pass" placeholder="(Leave empty to keep)" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                        </div>
+
+                        <div id="settings-msg" class="hidden text-sm font-medium mt-2"></div>
+
+                        <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                            <button data-i18n="modal_btn_cancel" type="button" class="modal-close-settings px-5 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancel</button>
+                            <button data-i18n="modal_set_btn_save" type="submit" class="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none">Update Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div id="modal-delete" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+            <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300 relative">
+                <div class="p-6 text-center">
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+                        <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                    </div>
+                    <h3 data-i18n="modal_del_title" class="text-lg font-medium text-slate-900 dark:text-white mb-2">Delete Node</h3>
+                    <p id="delete-node-msg" class="text-sm text-slate-500 dark:text-slate-400 mb-6">Are you sure you want to delete this node? This action cannot be undone.</p>
+                    <div class="flex justify-center gap-3">
+                        <button type="button" data-i18n="modal_btn_cancel" class="modal-close-delete px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-300 dark:border-slate-600">Cancel</button>
+                        <button type="button" id="modal-delete-btn-confirm" data-i18n="modal_del_btn_confirm" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-red-500 outline-none">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

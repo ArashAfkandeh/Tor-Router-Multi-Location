@@ -3,12 +3,15 @@ mod cli;
 mod config;
 mod daemon;
 mod tor_process;
+mod router;
+mod socks5;
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use crate::daemon::run_daemon;
 use crate::cli::run_cli;
+use tracing_subscriber::EnvFilter;
 
 // مسیرها نسبت به daemon/src/main.rs → daemon/../../assets/
 pub const TOR_BINARY_DATA: &[u8] = include_bytes!("../../assets/tor-bin");
@@ -59,7 +62,17 @@ async fn main() {
 
     let args: Vec<String> = env::args().collect();
     let db_path  = db_path_next_to_exe();
-    let api_bind = DEFAULT_API_BIND.to_string();
+
+    // Load saved settings (if DB exists) to determine bind address/port.
+    // Fall back to defaults when settings cannot be read.
+    let settings = match config::load_settings(&db_path) {
+        Ok(s) => s,
+        Err(_) => config::Settings::default(),
+    };
+
+    // Use the web panel port as the single shared port for both UI and API
+    // when the daemon is started with --web-dir. This makes UI+API share one bind.
+    let api_bind = format!("{}:{}", settings.web_bind_address, settings.web_panel_port);
 
     // بدون آرگومان → CLI
     if args.len() == 1 {
@@ -109,6 +122,16 @@ async fn main() {
     }
 
     if run_mode || web_dir.is_some() {
+        // Initialize logging
+        let filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("tor_router=info"))
+            .add_directive("hyper=info".parse().unwrap())
+            .add_directive("reqwest=info".parse().unwrap());
+            
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .init();
+            
         run_daemon(&db_path, &api_bind, web_dir).await;
     } else {
         // هیچ flag معتبری داده نشده → CLI

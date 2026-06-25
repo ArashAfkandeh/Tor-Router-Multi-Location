@@ -10,9 +10,12 @@ use tokio::time;
 
 use crate::api::start_web_server;
 use crate::config::{Config, RouteConfig, init_db};
+use crate::router::{Slot, start_router_listener};
+use crate::tor_process::spawn_route_worker;
 
 pub const NOT_CONNECTED: Duration = Duration::from_secs(3596400);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+pub const WEB_RESTART_SIGNAL: i64 = -1;
 
 pub struct ActiveNode {
     pub latency: Arc<RwLock<Duration>>,
@@ -20,17 +23,25 @@ pub struct ActiveNode {
     pub last_checked_at: Arc<RwLock<Option<String>>>,
 }
 
-pub type SharedNodes = Arc<RwLock<HashMap<String, Arc<ActiveNode>>>>;
+pub type SharedNodes = Arc<RwLock<HashMap<i64, Arc<ActiveNode>>>>;
 
-async fn stop_route(name: &str, handle: tokio::task::JoinHandle<()>) {
-    handle.abort();
-    if time::timeout(SHUTDOWN_TIMEOUT, handle).await.is_err() {
-        eprintln!(
-            "⚠️ [{}] Old process didn't confirm shutdown within {}s.",
-            name, SHUTDOWN_TIMEOUT.as_secs()
-        );
-    }
+pub struct ManagedRoute {
+    pub router_handle: tokio::task::JoinHandle<()>,
+    pub worker_handle: tokio::task::JoinHandle<()>,
+    pub slot: Arc<RwLock<Slot>>,
+    pub config: Arc<RwLock<RouteConfig>>,
 }
+
+async fn stop_route(handles: ManagedRoute) {
+    handles.router_handle.abort();
+    handles.worker_handle.abort();
+    
+    // We optionally wait for them to finish
+    let _ = time::timeout(SHUTDOWN_TIMEOUT, handles.router_handle).await;
+    let _ = time::timeout(SHUTDOWN_TIMEOUT, handles.worker_handle).await;
+}
+
+use tracing::{info, error};
 
 pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) {
     let abs_db_path = match fs::canonicalize(db_path) {
@@ -39,9 +50,8 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
     };
     let abs_db_str = abs_db_path.to_str().unwrap_or(db_path).to_string();
 
-    // Bootstrap DB schema
     if let Err(e) = init_db(&abs_db_str) {
-        eprintln!("❌ Failed to init database: {}", e);
+        error!("❌ Failed to init database: {}", e);
         process::exit(1);
     }
 
@@ -56,7 +66,7 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
     let tor_bin_path = match crate::tor_process::extract_assets(&assets_dir) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("❌ Failed to extract embedded Tor assets: {}", e);
+            error!("❌ Failed to extract embedded Tor assets: {}", e);
             process::exit(1);
         }
     };
@@ -68,51 +78,79 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
 
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.unwrap();
-        println!("🛑 Exit signal received! Cleaning up...");
+        info!("🛑 Exit signal received! Cleaning up...");
         let _ = fs::remove_dir_all(assets_clone);
         let _ = fs::remove_dir_all(tor_clone);
         process::exit(0);
     });
 
-    println!("✅ Daemon started (PID: {}). DB: {:?}", pid, abs_db_path);
-    println!("💡 Tip: type '\x1b[36mtor-p\x1b[0m' in a new terminal to open the CLI.");
-    println!("Press Ctrl+C to exit.");
+    info!("✅ Daemon started (PID: {}). DB: {:?}", pid, abs_db_path);
+    info!("💡 Tip: type 'tor-p' in a new terminal to open the CLI.");
+    info!("Press Ctrl+C to exit.");
 
-    let (restart_tx, mut restart_rx) = mpsc::channel::<String>(32);
+    let (restart_tx, mut restart_rx) = mpsc::channel::<i64>(32);
     let global_nodes: SharedNodes = Arc::new(RwLock::new(HashMap::new()));
 
-    // Start combined web panel + API server
     let api_nodes = global_nodes.clone();
-    let bind = api_bind.to_string();
-    let tx = restart_tx.clone();
     let db_for_api = abs_db_str.clone();
-    tokio::spawn(async move {
-        start_web_server(bind, tx, api_nodes, db_for_api, web_dir).await;
-    });
+    let mut web_handle: Option<tokio::task::JoinHandle<()>> = {
+        let bind = api_bind.to_string();
+        let tx = restart_tx.clone();
+        let api_nodes = api_nodes.clone();
+        let db_for_api = db_for_api.clone();
+        let web_dir = web_dir.clone();
+        Some(tokio::spawn(async move {
+            start_web_server(bind, tx, api_nodes, db_for_api, web_dir).await;
+        }))
+    };
 
-    let mut active_routes: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
-    let mut active_configs: HashMap<String, RouteConfig> = HashMap::new();
+    let active_routes: Arc<RwLock<HashMap<i64, ManagedRoute>>> = Arc::new(RwLock::new(HashMap::new()));
 
     let mut ticker = time::interval(Duration::from_secs(5));
     loop {
         tokio::select! {
-            route_name = restart_rx.recv() => {
-                if let Some(name) = route_name {
-                    if let Some(handle) = active_routes.remove(&name) {
-                        global_nodes.write().remove(&name);
-                        active_configs.remove(&name);
-                        println!("🔄 [{}] Stopping old process...", name);
-                        stop_route(&name, handle).await;
-                        println!("✅ [{}] Stopped, will respawn on next cycle", name);
+            route_id = restart_rx.recv() => {
+                    if let Some(id) = route_id {
+                        if id == -1 {
+                            info!("🔁 Web server restart requested");
+                            if let Some(h) = web_handle.take() {
+                                h.abort();
+                                let _ = h.await;
+                            }
+                            if let Ok(s) = crate::config::load_settings(&abs_db_str) {
+                                let bind = format!("{}:{}", s.web_bind_address, s.web_panel_port);
+                                let bind_for_spawn = bind.clone();
+                                let tx = restart_tx.clone();
+                                let api_nodes = global_nodes.clone();
+                                let db_for_api = abs_db_str.clone();
+                                let web_dir = web_dir.clone();
+                                web_handle = Some(tokio::spawn(async move {
+                                    start_web_server(bind_for_spawn, tx, api_nodes, db_for_api, web_dir).await;
+                                }));
+                                info!("✅ Web server respawned on {}", bind);
+                            } else {
+                                error!("❌ Failed to load settings for web restart");
+                            }
+                            continue;
+                        }
+
+                        // For UI restart command (id != -1)
+                        // The user requested a manual restart of the route.
+                        // We will just change restart_trigger in DB or we can just stop it here.
+                        // If we stop it here, it will be respawned in next tick automatically.
+                        if let Some(handles) = active_routes.write().remove(&id) {
+                            global_nodes.write().remove(&id);
+                            info!("🔄 [Route {}] Stopping old process...", id);
+                            stop_route(handles).await;
+                            info!("✅ [Route {}] Stopped, will respawn on next cycle", id);
+                        }
                     }
-                }
             }
             _ = ticker.tick() => {
                 if let Ok(config) = crate::config::load_from_db(&abs_db_str) {
                     reload_config(
                         config,
-                        &mut active_routes,
-                        &mut active_configs,
+                        active_routes.clone(),
                         global_nodes.clone(),
                         &tor_bin_path,
                         &tor_data_dir_base,
@@ -128,8 +166,7 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
 
 async fn reload_config(
     config: Config,
-    active_handles: &mut HashMap<String, tokio::task::JoinHandle<()>>,
-    active_configs: &mut HashMap<String, RouteConfig>,
+    active_handles: Arc<RwLock<HashMap<i64, ManagedRoute>>>,
     global_nodes: SharedNodes,
     tor_bin: &PathBuf,
     tor_data_root: &PathBuf,
@@ -137,53 +174,92 @@ async fn reload_config(
     geoip6_path: &PathBuf,
     db_path: &str,
 ) {
-    let mut new_routes: HashMap<String, RouteConfig> = HashMap::new();
+    let mut new_routes: HashMap<i64, RouteConfig> = HashMap::new();
     for mut r in config.routes {
         if r.swap_interval_hours.unwrap_or(0) == 0 { r.swap_interval_hours = Some(24); }
         if r.test_interval_minutes.unwrap_or(0) < 1 { r.test_interval_minutes = Some(15); }
-        new_routes.insert(r.name.clone(), r);
+        new_routes.insert(r.id, r);
     }
 
-    // Stop routes removed from DB or whose config changed
-    let to_stop: Vec<String> = active_configs
-        .iter()
-        .filter(|(name, old)| match new_routes.get(*name) {
-            None => true,
-            Some(new) => *new != **old,
-        })
-        .map(|(n, _)| n.clone())
-        .collect();
+    let current_ids: Vec<i64> = active_handles.read().keys().cloned().collect();
 
-    let mut waiters = Vec::new();
-    for name in &to_stop {
-        if let Some(handle) = active_handles.remove(name) {
-            global_nodes.write().remove(name);
-            active_configs.remove(name);
-            println!("🛑 [{}] Stopping...", name);
-            let n = name.clone();
-            waiters.push(tokio::spawn(async move {
-                stop_route(&n, handle).await;
-                println!("✅ [{}] Stopped", n);
-            }));
+    // 1. Delete removed routes
+    for id in &current_ids {
+        if !new_routes.contains_key(id) {
+            if let Some(handles) = active_handles.write().remove(id) {
+                global_nodes.write().remove(id);
+                info!("🛑 [Route {}] Deleting route...", id);
+                stop_route(handles).await;
+            }
         }
     }
-    for w in waiters { let _ = w.await; }
 
-    // Start new or changed routes
-    for (name, route) in &new_routes {
-        if !active_handles.contains_key(name) {
-            println!("🚀 [{}] Starting -> exit country {}", name, route.country_code.to_uppercase());
-            let handle = crate::tor_process::spawn_route(
-                route.clone(),
+    // 2. Add or Update routes
+    for (id, new_route) in &new_routes {
+        let name = &new_route.name;
+        let mut handles_guard = active_handles.write();
+        if let Some(managed) = handles_guard.get_mut(id) {
+            let old_route = managed.config.read().clone();
+            let mut worker_restarted = false;
+
+            // Worker restart condition
+            if old_route.country_code != new_route.country_code || old_route.restart_trigger != new_route.restart_trigger {
+                info!("🔄 [{}] Restarting Tor Worker due to country_code or manual trigger", name);
+                managed.worker_handle.abort();
+                {
+                    let mut s = managed.slot.write();
+                    s.active = None;
+                    s.draining = None;
+                }
+                *managed.config.write() = new_route.clone();
+                
+                managed.worker_handle = spawn_route_worker(
+                    managed.config.clone(),
+                    tor_bin.clone(),
+                    tor_data_root.clone(),
+                    geoip_path.clone(),
+                    geoip6_path.clone(),
+                    global_nodes.clone(),
+                    db_path.to_string(),
+                    managed.slot.clone(),
+                );
+                worker_restarted = true;
+            }
+
+            // Router restart condition
+            if old_route.bind_address != new_route.bind_address || old_route.input_port != new_route.input_port {
+                info!("🔄 [{}] Restarting Router Listener due to bind/port change", name);
+                managed.router_handle.abort();
+                let bind_address = new_route.bind_address.clone().unwrap_or_else(|| "0.0.0.0".to_string());
+                managed.router_handle = start_router_listener(bind_address, new_route.input_port, managed.slot.clone(), managed.config.clone()).await;
+            }
+
+            // Inline update if config changed but no restarts needed
+            if !worker_restarted && old_route != *new_route {
+                info!("📝 [{}] Updating config parameters inline", name);
+                *managed.config.write() = new_route.clone();
+            }
+            
+        } else {
+            // New route
+            info!("🚀 [{}] Starting Route -> exit country {}", name, new_route.country_code.to_uppercase());
+            let slot = Arc::new(RwLock::new(Slot { active: None, draining: None }));
+            let config = Arc::new(RwLock::new(new_route.clone()));
+            let bind_address = new_route.bind_address.clone().unwrap_or_else(|| "0.0.0.0".to_string());
+            
+            let router_handle = start_router_listener(bind_address, new_route.input_port, slot.clone(), config.clone()).await;
+            let worker_handle = spawn_route_worker(
+                config.clone(),
                 tor_bin.clone(),
                 tor_data_root.clone(),
                 geoip_path.clone(),
                 geoip6_path.clone(),
                 global_nodes.clone(),
                 db_path.to_string(),
+                slot.clone(),
             );
-            active_handles.insert(name.clone(), handle);
-            active_configs.insert(name.clone(), route.clone());
+            
+            handles_guard.insert(*id, ManagedRoute { router_handle, worker_handle, slot, config });
         }
     }
 }

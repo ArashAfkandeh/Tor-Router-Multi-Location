@@ -4,13 +4,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant as StdInstant};
 
 use parking_lot::RwLock;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::time::{self, Instant as TokioInstant};
+use tracing::{info, warn, error};
 
 use crate::config::RouteConfig;
-use crate::daemon::{ActiveNode, SharedNodes, NOT_CONNECTED};
+use crate::daemon::NOT_CONNECTED;
+use crate::router::{Backend, Slot};
 
 pub fn extract_assets(assets_dir: &Path) -> std::io::Result<PathBuf> {
     let tor_bin_path = assets_dir.join(if cfg!(windows) { "tor.exe" } else { "tor" });
@@ -32,78 +32,13 @@ pub fn extract_assets(assets_dir: &Path) -> std::io::Result<PathBuf> {
     Ok(tor_bin_path)
 }
 
-fn write_torrc(
-    route: &RouteConfig,
-    tor_data_root: &Path,
-    geoip_path: &Path,
-    geoip6_path: &Path,
-) -> std::io::Result<(PathBuf, PathBuf)> {
-    let instance_dir = tor_data_root.join(&route.name);
-    std::fs::create_dir_all(&instance_dir)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&instance_dir, std::fs::Permissions::from_mode(0o700));
-    }
-
-    let bind_address       = route.bind_address.clone().unwrap_or_else(|| "0.0.0.0".to_string());
-    let torrc_path         = instance_dir.join("torrc");
-    let control_port_file  = instance_dir.join("control-port");
-    let cookie_file        = instance_dir.join("control_auth_cookie");
-
-    let mut torrc = String::new();
-    torrc.push_str(&format!("SocksPort {}:{}\n", bind_address, route.input_port));
-    torrc.push_str(&format!("DataDirectory {}\n", instance_dir.display()));
-    torrc.push_str(&format!("GeoIPFile {}\n",     geoip_path.display()));
-    torrc.push_str(&format!("GeoIPv6File {}\n",   geoip6_path.display()));
-    torrc.push_str(&format!("ExitNodes {{{}}}\n", route.country_code.to_lowercase()));
-    torrc.push_str("StrictNodes 1\n");
-    torrc.push_str("ControlPort auto\n");
-    torrc.push_str(&format!("ControlPortWriteToFile {}\n", control_port_file.display()));
-    torrc.push_str("CookieAuthentication 1\n");
-    torrc.push_str(&format!("CookieAuthFile {}\n", cookie_file.display()));
-    torrc.push_str("Log notice stdout\n");
-    torrc.push_str("AvoidDiskWrites 1\n");
-
-    std::fs::write(&torrc_path, torrc)?;
-    Ok((torrc_path, instance_dir))
-}
-
-async fn read_control_port(instance_dir: &Path) -> Option<String> {
-    let content = tokio::fs::read_to_string(instance_dir.join("control-port")).await.ok()?;
-    content.lines()
-        .find(|l| l.starts_with("PORT="))
-        .map(|l| l.trim_start_matches("PORT=").trim().to_string())
-}
-
-async fn read_auth_cookie(instance_dir: &Path) -> Option<Vec<u8>> {
-    tokio::fs::read(instance_dir.join("control_auth_cookie")).await.ok()
-}
-
-async fn send_newnym(addr: &str, cookie: &[u8]) -> std::io::Result<()> {
-    let mut stream = TcpStream::connect(addr).await?;
-    let hex: String = cookie.iter().map(|b| format!("{:02x}", b)).collect();
-
-    stream.write_all(format!("AUTHENTICATE {}\r\n", hex).as_bytes()).await?;
-    let mut buf = [0u8; 512];
-    let _ = stream.read(&mut buf).await?;
-
-    stream.write_all(b"SIGNAL NEWNYM\r\n").await?;
-    let _ = stream.read(&mut buf).await?;
-    let _ = stream.write_all(b"QUIT\r\n").await;
-    Ok(())
-}
-
 #[derive(serde::Deserialize)]
 struct TorIpResponse {
     #[serde(rename = "IP")]
     ip: String,
 }
 
-/// Sends a test request through the route's SOCKS5 port.
-/// Returns (latency, Option<tor_exit_ip>).
-async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
+pub async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
     let proxy = match reqwest::Proxy::all(proxy_url) {
         Ok(p) => p,
         Err(_) => return (NOT_CONNECTED, None),
@@ -118,174 +53,226 @@ async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
     };
 
     let start = StdInstant::now();
-    match client.get("https://check.torproject.org/api/ip").send().await {
-        Ok(resp) if resp.status().is_success() => {
-            let elapsed = start.elapsed();
-            let ip = resp.json::<TorIpResponse>().await.ok().map(|r| r.ip);
-            (elapsed, ip)
-        }
-        _ => (NOT_CONNECTED, None),
-    }
+    let latency = match client.get("https://www.gstatic.com/generate_204").send().await {
+        Ok(r) if r.status().is_success() => start.elapsed(),
+        _ => NOT_CONNECTED,
+    };
+
+    let ip = match client.get("https://check.torproject.org/api/ip").send().await {
+        Ok(resp) if resp.status().is_success() => resp.json::<TorIpResponse>().await.ok().map(|r| r.ip),
+        _ => None,
+    };
+
+    (latency, ip)
 }
 
-/// Formats the current UTC time as ISO 8601 (without the chrono dependency).
-fn now_iso() -> String {
-    // SystemTime → seconds since epoch → hand-format
+pub(crate) fn now_iso() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    // Simple approach: emit as a Unix timestamp string; the panel's
-    // `new Date(value).toLocaleTimeString()` will parse it correctly if we
-    // pass milliseconds.
     format!("{}", secs * 1000)
 }
 
-pub fn spawn_route(
-    route: RouteConfig,
+pub struct TorInstance {
+    pub socks_addr: String,
+    pub kill_tx: tokio::sync::oneshot::Sender<()>,
+}
+
+impl TorInstance {
+    pub fn stop(self) {
+        let _ = self.kill_tx.send(());
+    }
+}
+
+pub fn get_free_port() -> Result<u16, String> {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| e.to_string())
+        .map(|l| l.local_addr().unwrap().port())
+}
+
+pub async fn start_tor_instance(
+    name: &str,
+    country_code: &str,
     tor_bin: PathBuf,
     tor_data_root: PathBuf,
     geoip_path: PathBuf,
     geoip6_path: PathBuf,
-    global_nodes: SharedNodes,
+) -> Result<TorInstance, String> {
+    let port = get_free_port()?;
+    let socks_addr = format!("127.0.0.1:{}", port);
+
+    let instance_name = format!("{}_{}", name, now_iso());
+    let instance_dir = tor_data_root.join(&instance_name);
+    std::fs::create_dir_all(&instance_dir).map_err(|e| e.to_string())?;
+
+    let torrc_path = instance_dir.join("torrc");
+    let mut torrc = String::new();
+    torrc.push_str(&format!("SocksPort {}\n", socks_addr));
+    torrc.push_str(&format!("DataDirectory {}\n", instance_dir.display()));
+    torrc.push_str(&format!("GeoIPFile {}\n",     geoip_path.display()));
+    torrc.push_str(&format!("GeoIPv6File {}\n",   geoip6_path.display()));
+    torrc.push_str(&format!("ExitNodes {{{}}}\n", country_code.to_lowercase()));
+    torrc.push_str("StrictNodes 1\n");
+    torrc.push_str("Log notice stdout\n");
+    torrc.push_str("AvoidDiskWrites 1\n");
+
+    std::fs::write(&torrc_path, torrc).map_err(|e| e.to_string())?;
+
+    let mut cmd = Command::new(&tor_bin);
+    cmd.arg("-f").arg(&torrc_path)
+       .stdout(Stdio::piped())
+       .stderr(Stdio::null())
+       .kill_on_drop(true);
+
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    let stdout = child.stdout.take().unwrap();
+    
+    let (bootstrap_tx, bootstrap_rx) = tokio::sync::oneshot::channel::<bool>();
+    let log_name = instance_name.clone();
+    
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stdout).lines();
+        let mut bootstrap_tx = Some(bootstrap_tx);
+        while let Ok(Some(line)) = lines.next_line().await {
+            if line.contains("Bootstrapped 100%") {
+                if let Some(tx) = bootstrap_tx.take() { let _ = tx.send(true); }
+            }
+            if line.contains("[warn]") || line.contains("[err]") {
+                warn!("[{}] {}", log_name, line);
+            }
+        }
+        if let Some(tx) = bootstrap_tx.take() { let _ = tx.send(false); }
+    });
+
+    let bootstrapped = tokio::select! {
+        r = bootstrap_rx => r.unwrap_or(false),
+        _ = tokio::time::sleep(Duration::from_secs(120)) => false,
+    };
+
+    if !bootstrapped {
+        let _ = child.kill().await;
+        let _ = std::fs::remove_dir_all(&instance_dir);
+        return Err("Bootstrap timeout".to_string());
+    }
+
+    let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+    let instance_dir_clone = instance_dir.clone();
+    
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = kill_rx => { let _ = child.kill().await; }
+            _ = child.wait() => {}
+        }
+        let _ = child.wait().await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let _ = std::fs::remove_dir_all(&instance_dir_clone);
+    });
+
+    Ok(TorInstance {
+        socks_addr,
+        kill_tx,
+    })
+}
+
+pub fn spawn_route_worker(
+    route_arc: Arc<RwLock<RouteConfig>>,
+    tor_bin: PathBuf,
+    tor_data_root: PathBuf,
+    geoip_path: PathBuf,
+    geoip6_path: PathBuf,
+    global_nodes: crate::daemon::SharedNodes,
     db_path: String,
+    slot: Arc<RwLock<Slot>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let mut active_instance: Option<TorInstance> = None;
+        let mut last_swap: u64 = 0;
+        
+        let route_id = route_arc.read().id;
+
+        let node_state = Arc::new(crate::daemon::ActiveNode {
+            latency: Arc::new(RwLock::new(NOT_CONNECTED)),
+            tor_ip: Arc::new(RwLock::new(None)),
+            last_checked_at: Arc::new(RwLock::new(None)),
+        });
+        global_nodes.write().insert(route_id, node_state.clone());
+
         loop {
-            let (torrc_path, instance_dir) =
-                match write_torrc(&route, &tor_data_root, &geoip_path, &geoip6_path) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("❌ [{}] Failed to write torrc: {}", route.name, e);
-                        time::sleep(Duration::from_secs(30)).await;
-                        continue;
-                    }
-                };
-
-            let latency         = Arc::new(RwLock::new(NOT_CONNECTED));
-            let tor_ip          = Arc::new(RwLock::new(None::<String>));
-            let last_checked_at = Arc::new(RwLock::new(None::<String>));
-
-            global_nodes.write().insert(
-                route.name.clone(),
-                Arc::new(ActiveNode {
-                    latency: latency.clone(),
-                    tor_ip: tor_ip.clone(),
-                    last_checked_at: last_checked_at.clone(),
-                }),
-            );
-
-            let mut cmd = Command::new(&tor_bin);
-            cmd.arg("-f").arg(&torrc_path)
-               .stdout(Stdio::piped())
-               .stderr(Stdio::null())
-               .kill_on_drop(true);
-
-            let mut child = match cmd.spawn() {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("❌ [{}] Failed to spawn: {}", route.name, e);
-                    global_nodes.write().remove(&route.name);
-                    time::sleep(Duration::from_secs(30)).await;
-                    continue;
-                }
+            let (name, swap_hours, test_minutes, country_code) = {
+                let r = route_arc.read();
+                (
+                    r.name.clone(),
+                    r.swap_interval_hours.unwrap_or(24) as u64,
+                    r.test_interval_minutes.unwrap_or(15) as u64,
+                    r.country_code.clone(),
+                )
             };
 
-            let stdout = child.stdout.take().expect("piped stdout");
-            let (bootstrap_tx, bootstrap_rx) = tokio::sync::oneshot::channel::<bool>();
-            let log_name = route.name.clone();
-            tokio::spawn(async move {
-                let mut lines = BufReader::new(stdout).lines();
-                let mut bootstrap_tx = Some(bootstrap_tx);
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if line.contains("Bootstrapped 100%") {
-                        if let Some(tx) = bootstrap_tx.take() { let _ = tx.send(true); }
-                    }
-                    if line.contains("[warn]") || line.contains("[err]") {
-                        eprintln!("[{}] {}", log_name, line);
-                    }
-                }
-                if let Some(tx) = bootstrap_tx.take() { let _ = tx.send(false); }
-            });
-
-            let bootstrapped = tokio::select! {
-                r = bootstrap_rx => r.unwrap_or(false),
-                _ = time::sleep(Duration::from_secs(120)) => false,
-            };
-
-            if !bootstrapped {
-                eprintln!("⚠️ [{}] Bootstrap timeout, retrying...", route.name);
-                let _ = child.kill().await;
-                global_nodes.write().remove(&route.name);
-                time::sleep(Duration::from_secs(15)).await;
-                continue;
+            let now_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            let swap_allowed = (now_time - last_swap) >= swap_hours * 3600;
+            
+            let mut active_lat = NOT_CONNECTED;
+            if let Some(inst) = &active_instance {
+                let proxy_url = format!("socks5h://{}", inst.socks_addr);
+                let (lat, ip) = measure_latency(&proxy_url).await;
+                active_lat = lat;
+                
+                let iso = now_iso();
+                *node_state.latency.write() = lat;
+                *node_state.tor_ip.write() = ip.clone();
+                *node_state.last_checked_at.write() = Some(iso.clone());
+                let _ = crate::config::update_route_state_by_name(&db_path, &name, ip.as_deref(), Some(&iso));
             }
-
-            println!("✅ [{}] Circuit ready (exit: {})", route.name, route.country_code.to_uppercase());
-
-            let control_addr = read_control_port(&instance_dir).await;
-            let cookie       = read_auth_cookie(&instance_dir).await;
-
-            let bind_address = route.bind_address.clone().unwrap_or_else(|| "0.0.0.0".to_string());
-            let proxy_url    = format!("socks5h://{}:{}", bind_address, route.input_port);
-
-            let test_every   = Duration::from_secs(route.test_interval_minutes.unwrap_or(15) * 60);
-            let swap_after   = Duration::from_secs(route.swap_interval_hours.unwrap_or(24) * 3600);
-
-            let mut test_ticker = time::interval(test_every);
-            let mut next_swap   = TokioInstant::now() + swap_after;
-
-            // First check immediately
-            let (lat, ip) = measure_latency(&proxy_url).await;
-            *latency.write()         = lat;
-            *tor_ip.write()          = ip.clone();
-            *last_checked_at.write() = Some(now_iso());
-
-            let _ = crate::config::update_route_state_by_name(
-                &db_path,
-                &route.name,
-                ip.as_deref(),
-                last_checked_at.read().as_deref(),
-            );
-
-            let exit_status: Option<std::io::Result<std::process::ExitStatus>>;
-            loop {
-                tokio::select! {
-                    status = child.wait() => { exit_status = Some(status); break; }
-                    _ = test_ticker.tick() => {
-                        let (lat, ip) = measure_latency(&proxy_url).await;
-                        *latency.write()         = lat;
-                        *tor_ip.write()          = ip.clone();
-                        *last_checked_at.write() = Some(now_iso());
-                    }
-                    _ = time::sleep_until(next_swap) => {
-                        if let (Some(addr), Some(ck)) = (&control_addr, &cookie) {
-                            match send_newnym(addr, ck).await {
-                                Ok(_)  => println!("🔄 [{}] New circuit (NEWNYM)", route.name),
-                                Err(e) => eprintln!("⚠️ [{}] NEWNYM failed: {}", route.name, e),
-                            }
+            
+            if active_instance.is_none() || swap_allowed || active_lat == NOT_CONNECTED {
+                info!("🔄 [{}] Worker spawning test Tor instance...", name);
+                if let Ok(test_inst) = start_tor_instance(
+                    &name,
+                    &country_code,
+                    tor_bin.clone(),
+                    tor_data_root.clone(),
+                    geoip_path.clone(),
+                    geoip6_path.clone()
+                ).await {
+                    let proxy_url = format!("socks5h://{}", test_inst.socks_addr);
+                    let (test_lat, test_ip) = measure_latency(&proxy_url).await;
+                    
+                    if active_instance.is_none() || (test_lat != NOT_CONNECTED && test_lat < active_lat) {
+                        info!("✅ [{}] Swapping Router to new instance! (latency: {}ms)", name, test_lat.as_millis());
+                        
+                        let old_instance = active_instance.take();
+                        
+                        {
+                            let mut s = slot.write();
+                            s.draining = s.active.clone();
+                            s.active = Some(Backend { socks: test_inst.socks_addr.clone() });
                         }
-                        if let Err(e) = crate::config::update_route_state_by_name(
-                            &db_path,
-                            &route.name,
-                            tor_ip.read().as_deref(),
-                            last_checked_at.read().as_deref(),
-                        ) {
-                            eprintln!("⚠️ [{}] failed to persist swap state: {}", route.name, e);
+                        
+                        active_instance = Some(test_inst);
+                        last_swap = now_time;
+                        
+                        let iso = now_iso();
+                        *node_state.latency.write() = test_lat;
+                        *node_state.tor_ip.write() = test_ip.clone();
+                        *node_state.last_checked_at.write() = Some(iso.clone());
+                        let _ = crate::config::update_route_state_by_name(&db_path, &name, test_ip.as_deref(), Some(&iso));
+                        
+                        if let Some(old) = old_instance {
+                            old.stop();
                         }
-                        next_swap = TokioInstant::now() + swap_after;
+                    } else {
+                        info!("➖ [{}] Test instance not better ({}ms >= {}ms), discarding.", name, test_lat.as_millis(), active_lat.as_millis());
+                        test_inst.stop();
                     }
+                } else {
+                    error!("⚠️ [{}] Failed to spawn test Tor instance", name);
                 }
             }
-
-            global_nodes.write().remove(&route.name);
-            match exit_status {
-                Some(Ok(s))  => eprintln!("⚠️ [{}] Exited ({}), restarting...", route.name, s),
-                Some(Err(e)) => eprintln!("⚠️ [{}] Error ({}), restarting...", route.name, e),
-                None => eprintln!("⚠️ [{}] Child ended unexpectedly, restarting...", route.name),
-            }
-            time::sleep(Duration::from_secs(5)).await;
+            
+            let test_interval = std::time::Duration::from_secs(test_minutes * 60);
+            tokio::time::sleep(test_interval).await;
         }
     })
 }

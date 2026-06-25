@@ -109,6 +109,9 @@ pub fn init_db(db_path: &str) -> Result<()> {
     if !cols.contains(&"last_checked_at".to_string()) {
         conn.execute("ALTER TABLE routes ADD COLUMN last_checked_at TEXT", [])?;
     }
+    if !cols.contains(&"restart_trigger".to_string()) {
+        conn.execute("ALTER TABLE routes ADD COLUMN restart_trigger TEXT", [])?;
+    }
 
     Ok(())
 }
@@ -118,7 +121,7 @@ pub fn init_db(db_path: &str) -> Result<()> {
 pub fn load_from_db(db_path: &str) -> Result<Config> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, bind_address, input_port, username, password, country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at FROM routes"
+        "SELECT id, name, bind_address, input_port, username, password, country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at, restart_trigger FROM routes"
     )?;
 
     let route_iter = stmt.query_map([], |row| {
@@ -134,9 +137,9 @@ pub fn load_from_db(db_path: &str) -> Result<Config> {
             country_code:          row.get(6)?,
             swap_interval_hours:   Some(row.get::<_, i64>(7)? as u64),
             test_interval_minutes: Some(row.get::<_, i64>(8)? as u64),
-            restart_trigger:       None,
             tor_ip:                row.get(9)?,
             last_checked_at:       row.get(10)?,
+            restart_trigger:       row.get(11)?,
         })
     })?;
 
@@ -151,7 +154,7 @@ pub fn get_route_by_id(db_path: &str, id: i64) -> Result<RouteConfig> {
     let conn = Connection::open(db_path)?;
     conn.query_row(
         "SELECT id, name, bind_address, input_port, username, password,
-                country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at
+                country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at, restart_trigger
          FROM routes WHERE id=?1",
         params![id],
         |row| {
@@ -167,9 +170,9 @@ pub fn get_route_by_id(db_path: &str, id: i64) -> Result<RouteConfig> {
                 country_code:          row.get(6)?,
                 swap_interval_hours:   Some(row.get::<_, i64>(7)? as u64),
                 test_interval_minutes: Some(row.get::<_, i64>(8)? as u64),
-                restart_trigger:       None,
                 tor_ip:                row.get(9)?,
                 last_checked_at:       row.get(10)?,
+                restart_trigger:       row.get(11)?,
             })
         },
     )
@@ -180,8 +183,8 @@ pub fn create_route(db_path: &str, route: &RouteConfig) -> Result<i64> {
     conn.execute(
         "INSERT INTO routes
             (name, bind_address, input_port, username, password,
-             country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+             country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at, restart_trigger)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
         params![
             route.name,
             route.bind_address.as_deref().unwrap_or("0.0.0.0"),
@@ -193,6 +196,7 @@ pub fn create_route(db_path: &str, route: &RouteConfig) -> Result<i64> {
             route.test_interval_minutes.unwrap_or(15) as i64,
             route.tor_ip,
             route.last_checked_at,
+            route.restart_trigger,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -203,8 +207,8 @@ pub fn update_route(db_path: &str, id: i64, route: &RouteConfig) -> Result<()> {
     conn.execute(
         "UPDATE routes SET
             name=?1, bind_address=?2, input_port=?3, username=?4, password=?5,
-            country_code=?6, swap_interval_hours=?7, test_interval_minutes=?8
-         WHERE id=?9",
+            country_code=?6, swap_interval_hours=?7, test_interval_minutes=?8, restart_trigger=?9
+         WHERE id=?10",
         params![
             route.name,
             route.bind_address.as_deref().unwrap_or("0.0.0.0"),
@@ -214,6 +218,7 @@ pub fn update_route(db_path: &str, id: i64, route: &RouteConfig) -> Result<()> {
             route.country_code,
             route.swap_interval_hours.unwrap_or(24) as i64,
             route.test_interval_minutes.unwrap_or(15) as i64,
+            route.restart_trigger,
             id,
         ],
     )?;

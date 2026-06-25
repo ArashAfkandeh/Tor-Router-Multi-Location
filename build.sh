@@ -19,9 +19,9 @@
 #  │       ├── config.rs
 #  │       ├── daemon.rs
 #  │       └── tor_process.rs
-#  └── web/                   ← وب پنل (آینده)
-#      ├── package.json
-#      └── src/
+#  └── webpanel/                  ← وب پنل (آینده)
+#      ├── index.html
+#      └── ...
 #
 #  خروجی نهایی در: ./dist/
 #    dist/<binary>    ← daemon
@@ -38,7 +38,7 @@ CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 # ─── مسیرها ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DAEMON_DIR="$SCRIPT_DIR/daemon"
-WEB_DIR="$SCRIPT_DIR/web"
+WEB_DIR="$SCRIPT_DIR/webpanel"
 ASSETS_DIR="$SCRIPT_DIR/assets"
 DIST_DIR="$SCRIPT_DIR/dist"
 
@@ -186,42 +186,15 @@ fi
 #  مرحله ۲ — بیلد Web Panel
 # ══════════════════════════════════════════════════════════════════════════════
 if $BUILD_WEB; then
-    if [[ ! -d "$WEB_DIR" || ! -f "$WEB_DIR/package.json" ]]; then
-        log_info "پوشه web/ یا package.json پیدا نشد — رد شد."
+    if [[ ! -d "$WEB_DIR" || ! -f "$WEB_DIR/index.html" ]]; then
+        log_info "پوشه webpanel/ یا index.html پیدا نشد — رد شد."
     else
         log_section "مرحله ۲ — Web Panel"
 
-        if   [[ -f "$WEB_DIR/pnpm-lock.yaml" ]]; then PKG_MGR="pnpm"
-        elif [[ -f "$WEB_DIR/yarn.lock"       ]]; then PKG_MGR="yarn"
-        else                                           PKG_MGR="npm"; fi
-
-        check_tool "$PKG_MGR" "https://nodejs.org"
-        check_tool node
-        log_info "Node $(node --version) | $PKG_MGR"
-
-        log_step "نصب وابستگی‌ها..."
-        (cd "$WEB_DIR" && "$PKG_MGR" install)
-
-        BUILD_SCRIPT="build"
-        grep -q '"build:prod"' "$WEB_DIR/package.json" 2>/dev/null && BUILD_SCRIPT="build:prod"
-
-        log_step "بیلد وب پنل ($BUILD_SCRIPT)..."
-        T0=$(date +%s)
-        (cd "$WEB_DIR" && "$PKG_MGR" run "$BUILD_SCRIPT")
-        log_ok "وب پنل در $(($(date +%s) - T0))s بیلد شد."
-
-        WEB_OUT=""
-        for c in dist build out; do
-            [[ -d "$WEB_DIR/$c" ]] && WEB_OUT="$WEB_DIR/$c" && break
-        done
-
-        if [[ -n "$WEB_OUT" ]]; then
-            rm -rf "$DIST_DIR/web"
-            cp -r "$WEB_OUT" "$DIST_DIR/web"
-            log_ok "→ dist/web/"
-        else
-            log_warn "پوشه خروجی وب پنل (dist/build/out) پیدا نشد."
-        fi
+        log_step "کپی فایل‌های پنل وب..."
+        rm -rf "$DIST_DIR/web"
+        cp -r "$WEB_DIR" "$DIST_DIR/web"
+        log_ok "→ dist/web/"
     fi
 fi
 

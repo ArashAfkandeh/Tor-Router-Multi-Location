@@ -42,7 +42,7 @@ struct RouteApiItem {
 
 pub async fn run_cli(api_addr: &str) {
     let api_url = format!("http://{}", api_addr);
-    let mut session_cookie: Option<String> = None;
+    let session_cookie: Option<String> = None;
 
     loop {
         clear_screen();
@@ -58,7 +58,6 @@ pub async fn run_cli(api_addr: &str) {
         println!("  \x1b[36m6.\x1b[0m ✏️ Edit Route (API)");
         println!("  \x1b[36m7.\x1b[0m 🗑️ Delete Route (API)");
         println!("  \x1b[36m8.\x1b[0m 🔐 Update Admin Credentials");
-        println!("  \x1b[36m9.\x1b[0m 🔑 Login / Logout");
         println!("  \x1b[36m0.\x1b[0m ❌ Exit\n");
         print!("👉 Select an option: ");
         io::stdout().flush().unwrap();
@@ -98,15 +97,6 @@ pub async fn run_cli(api_addr: &str) {
             }
             "8" => {
                 update_admin_credentials(&api_url, session_cookie.as_deref()).await;
-                pause();
-            }
-            "9" => {
-                if session_cookie.is_some() {
-                    session_cookie = None;
-                    println!("\n\x1b[32m✅ Logged out\x1b[0m");
-                } else {
-                    session_cookie = login_cli(&api_url).await;
-                }
                 pause();
             }
             "0" => {
@@ -220,7 +210,8 @@ async fn view_live_status_loop(api_url: &str, session: Option<&str>) {
             for s in &stats {
                 let bind = s.bind_address.clone();
                 let port = s.port;
-                handles.push(tokio::spawn(async move { probe_latency_for_route(&bind, port).await }));
+                let api = api_url.to_string();
+                handles.push(tokio::spawn(async move { probe_latency_for_route(&api, &bind, port).await }));
             }
             let mut results = Vec::new();
             for h in handles {
@@ -276,29 +267,22 @@ async fn view_live_status_loop(api_url: &str, session: Option<&str>) {
     }
 }
 
-async fn probe_latency_for_route(bind: &str, port: u16) -> String {
-    use std::time::Instant;
-    let proxy_url = format!("socks5h://{}:{}", bind, port);
-    let proxy = match reqwest::Proxy::all(&proxy_url) {
-        Ok(p) => p,
-        Err(_) => return "Connecting/Error".to_string(),
-    };
-    let client = match reqwest::Client::builder().proxy(proxy).timeout(Duration::from_secs(6)).build() {
+async fn probe_latency_for_route(api_url: &str, bind: &str, port: u16) -> String {
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(6)).build() {
         Ok(c) => c,
         Err(_) => return "Connecting/Error".to_string(),
     };
-    let start = Instant::now();
-    match client.get("https://www.gstatic.com/generate_204").send().await {
-        Ok(_) => {
-            let elapsed = start.elapsed();
-            if elapsed.as_millis() > 0 {
-                format!("{}ms", elapsed.as_millis())
-            } else {
-                "0ms".to_string()
+    let url = format!("{}/probe?bind={}&port={}", api_url.trim_end_matches('/'), bind, port);
+    if let Ok(resp) = client.get(&url).send().await {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(lat) = json.get("latency").and_then(|v| v.as_str()) {
+                    return lat.to_string();
+                }
             }
         }
-        _ => "Connecting/Error".to_string(),
     }
+    "Connecting/Error".to_string()
 }
 
 async fn restart_route(api_url: &str) {
@@ -349,24 +333,17 @@ async fn change_ports_with_session(api_url: &str, session: Option<&str>) {
     println!("\n\x1b[33m🌐 Change Web Panel & API Ports\x1b[0m");
     println!("(Press ENTER to skip changing a port)\n");
 
-    print!("👉 Enter new Web Panel Port (default 3000): ");
+    print!("👉 Enter new Port for Web Panel and API (default 3000): ");
     io::stdout().flush().unwrap();
-    let mut web_input = String::new();
-    io::stdin().read_line(&mut web_input).unwrap();
-    let web_input = web_input.trim();
-    let web_panel_port: u16 = if web_input.is_empty() { 3000 } else { web_input.parse().unwrap_or(3000) };
-
-    print!("👉 Enter new API Port (default 3000): ");
-    io::stdout().flush().unwrap();
-    let mut api_input = String::new();
-    io::stdin().read_line(&mut api_input).unwrap();
-    let api_input = api_input.trim();
-    let api_port: u16 = if api_input.is_empty() { 3000 } else { api_input.parse().unwrap_or(3000) };
+    let mut port_input = String::new();
+    io::stdin().read_line(&mut port_input).unwrap();
+    let port_input = port_input.trim();
+    let port: u16 = if port_input.is_empty() { 3000 } else { port_input.parse().unwrap_or(3000) };
 
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
     let payload = serde_json::json!({
-        "web_panel_port": web_panel_port,
-        "api_port": api_port
+        "web_panel_port": port,
+        "api_port": port
     });
 
     let mut req = client.put(&format!("{}/settings", api_url)).json(&payload);
@@ -385,41 +362,8 @@ async fn change_ports_with_session(api_url: &str, session: Option<&str>) {
     }
 }
 
-async fn login_cli(api_url: &str) -> Option<String> {
-    print!("👉 Username: "); io::stdout().flush().unwrap();
-    let mut username = String::new(); io::stdin().read_line(&mut username).unwrap();
-    let username = username.trim().to_string();
-
-    print!("👉 Password: "); io::stdout().flush().unwrap();
-    let mut password = String::new(); io::stdin().read_line(&mut password).unwrap();
-    let password = password.trim().to_string();
-
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
-    let res = client.post(&format!("{}/api/login", api_url))
-        .json(&serde_json::json!({ "username": username, "password": password }))
-        .send().await;
-
-    match res {
-        Ok(r) if r.status().is_success() => {
-            if let Some(sc) = r.headers().get("set-cookie") {
-                if let Ok(s) = sc.to_str() {
-                    let cookie = s.split(';').next().unwrap_or(s).to_string();
-                    println!("\n\x1b[32m✅ Login successful\x1b[0m");
-                    return Some(cookie);
-                }
-            }
-            println!("\n\x1b[32m✅ Login OK but no cookie received\x1b[0m");
-            None
-        }
-        _ => {
-            println!("\n\x1b[31m❌ Login failed\x1b[0m");
-            None
-        }
-    }
-}
 
 async fn create_route_cli(api_url: &str, session: Option<&str>) {
-    if session.is_none() { println!("\n\x1b[31m⚠️ Please login first (option 9).\x1b[0m"); return; }
     print!("👉 Route name: "); io::stdout().flush().unwrap(); let mut name = String::new(); io::stdin().read_line(&mut name).unwrap(); let name = name.trim().to_string();
     if name.is_empty() { println!("Cancelled."); return; }
     print!("👉 Bind address (default 127.0.0.1): "); io::stdout().flush().unwrap(); let mut bind = String::new(); io::stdin().read_line(&mut bind).unwrap(); let bind = bind.trim();
@@ -443,10 +387,9 @@ async fn create_route_cli(api_url: &str, session: Option<&str>) {
     });
 
     let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build().unwrap();
-    let res = client.post(&format!("{}/api/routes", api_url))
-        .header(reqwest::header::COOKIE, session.unwrap())
-        .json(&payload)
-        .send().await;
+    let mut req = client.post(&format!("{}/api/routes", api_url)).json(&payload);
+    if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
+    let res = req.send().await;
 
     match res {
         Ok(r) if r.status().is_success() => println!("\n\x1b[32m✅ Route created\x1b[0m"),
@@ -456,9 +399,10 @@ async fn create_route_cli(api_url: &str, session: Option<&str>) {
 }
 
 async fn edit_route_cli(api_url: &str, session: Option<&str>) {
-    if session.is_none() { println!("\n\x1b[31m⚠️ Please login first (option 9).\x1b[0m"); return; }
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
-    let res = client.get(&format!("{}/api/routes", api_url)).header(reqwest::header::COOKIE, session.unwrap()).send().await;
+    let mut req = client.get(&format!("{}/api/routes", api_url));
+    if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
+    let res = req.send().await;
     let items: Vec<RouteApiItem> = match res {
         Ok(r) => match r.json().await { Ok(v) => v, Err(_) => { println!("Failed to list routes"); return; } },
         Err(_) => { println!("Failed to contact API"); return; }
@@ -491,7 +435,9 @@ async fn edit_route_cli(api_url: &str, session: Option<&str>) {
         "test_interval_minutes": test,
     });
 
-    let res = client.put(&format!("{}/api/routes/{}", api_url, id)).header(reqwest::header::COOKIE, session.unwrap()).json(&payload).send().await;
+    let mut req = client.put(&format!("{}/api/routes/{}", api_url, id)).json(&payload);
+    if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
+    let res = req.send().await;
     match res {
         Ok(r) if r.status().is_success() => println!("\n\x1b[32m✅ Route updated\x1b[0m"),
         Ok(r) => println!("\n\x1b[31m❌ Update failed: {}\x1b[0m", r.status()),
@@ -500,9 +446,10 @@ async fn edit_route_cli(api_url: &str, session: Option<&str>) {
 }
 
 async fn delete_route_cli(api_url: &str, session: Option<&str>) {
-    if session.is_none() { println!("\n\x1b[31m⚠️ Please login first (option 9).\x1b[0m"); return; }
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
-    let res = client.get(&format!("{}/api/routes", api_url)).header(reqwest::header::COOKIE, session.unwrap()).send().await;
+    let mut req = client.get(&format!("{}/api/routes", api_url));
+    if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
+    let res = req.send().await;
     let items: Vec<RouteApiItem> = match res {
         Ok(r) => match r.json().await { Ok(v) => v, Err(_) => { println!("Failed to list routes"); return; } },
         Err(_) => { println!("Failed to contact API"); return; }
@@ -513,7 +460,9 @@ async fn delete_route_cli(api_url: &str, session: Option<&str>) {
     print!("Enter ID to delete: "); io::stdout().flush().unwrap(); let mut id = String::new(); io::stdin().read_line(&mut id).unwrap(); let id = id.trim().to_string();
     if id.is_empty() { return; }
     print!("Are you sure? Type DELETE to confirm: "); io::stdout().flush().unwrap(); let mut confirm = String::new(); io::stdin().read_line(&mut confirm).unwrap(); if confirm.trim() != "DELETE" { println!("Cancelled"); return; }
-    let res = client.delete(&format!("{}/api/routes/{}", api_url, id)).header(reqwest::header::COOKIE, session.unwrap()).send().await;
+    let mut req = client.delete(&format!("{}/api/routes/{}", api_url, id));
+    if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
+    let res = req.send().await;
     match res {
         Ok(r) if r.status().is_success() => println!("\n\x1b[32m✅ Route deleted\x1b[0m"),
         Ok(r) => println!("\n\x1b[31m❌ Delete failed: {}\x1b[0m", r.status()),
@@ -522,7 +471,6 @@ async fn delete_route_cli(api_url: &str, session: Option<&str>) {
 }
 
 async fn update_admin_credentials(api_url: &str, session: Option<&str>) {
-    if session.is_none() { println!("\n\x1b[31m⚠️ Please login first (option 9).\x1b[0m"); return; }
     print!("New admin username (leave blank to skip): "); io::stdout().flush().unwrap(); let mut user = String::new(); io::stdin().read_line(&mut user).unwrap(); let user = user.trim().to_string();
     print!("New admin password (leave blank to skip): "); io::stdout().flush().unwrap(); let mut pass = String::new(); io::stdin().read_line(&mut pass).unwrap(); let pass = pass.trim().to_string();
     if user.is_empty() && pass.is_empty() { println!("Nothing to do"); return; }
@@ -530,7 +478,9 @@ async fn update_admin_credentials(api_url: &str, session: Option<&str>) {
     if !user.is_empty() { payload.insert("admin_username".to_string(), serde_json::Value::String(user)); }
     if !pass.is_empty() { payload.insert("admin_password".to_string(), serde_json::Value::String(pass)); }
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
-    let res = client.put(&format!("{}/settings", api_url)).header(reqwest::header::COOKIE, session.unwrap()).json(&payload).send().await;
+    let mut req = client.put(&format!("{}/settings", api_url)).json(&payload);
+    if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
+    let res = req.send().await;
     match res {
         Ok(r) if r.status().is_success() => println!("\n\x1b[32m✅ Admin credentials updated\x1b[0m"),
         Ok(r) => println!("\n\x1b[31m❌ Update failed: {}\x1b[0m", r.status()),
