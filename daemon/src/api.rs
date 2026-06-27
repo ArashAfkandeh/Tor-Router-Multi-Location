@@ -49,7 +49,7 @@ pub async fn start_web_server(
     // ── API routes ──────────────────────────────────────────────────────────
     // NOTE: axum matches static segments before parameterised ones, so
     // /api/routes/restart-all will win over /api/routes/:id.
-    let api = Router::new()
+    let api_routes = Router::new()
         .route("/api/login",               post(login))
         .route("/api/routes",              get(list_routes).post(create_route_handler))
         .route("/api/routes/{id}/probe",    get(probe_route_handler))
@@ -63,16 +63,16 @@ pub async fn start_web_server(
         .route("/restart",                 post(legacy_restart))
         .route("/status",                  get(legacy_status))
         .route("/probe",                   get(legacy_probe))
-        .with_state(state);
+        .with_state(state.clone());
 
     // ── Static files (web panel) ────────────────────────────────────────────
-    let app = if let Some(ref dir) = web_dir {
+    let web_router = if let Some(ref dir) = web_dir {
         // Serve the built React app; fall back to index.html for SPA routing
         let serve = ServeDir::new(&dir)
             .fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
-        api.fallback_service(serve)
+        Router::new().fallback_service(serve)
     } else {
-        api.fallback(|| async {
+        Router::new().fallback(|| async {
             (
                 StatusCode::NOT_FOUND,
                 "Web panel not configured. Start the daemon with --web-dir <path/to/dist>",
@@ -81,13 +81,52 @@ pub async fn start_web_server(
     };
 
     let settings = config::load_settings(&db_path).unwrap_or_default();
+    
+    let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
+    if !base_path.is_empty() && !base_path.starts_with('/') {
+        base_path = format!("/{}", base_path);
+    }
+    
+    let app = if base_path.is_empty() || base_path == "/" {
+        Router::new().merge(api_routes).merge(web_router)
+    } else {
+        Router::new()
+            .nest(&base_path, Router::new().merge(api_routes).merge(web_router))
+            // Redirect root to base_path/
+            .route("/", axum::routing::get(move || {
+                let bp = format!("{}/", base_path);
+                async move { axum::response::Redirect::temporary(&bp) }
+            }))
+    };
 
     let addr: std::net::SocketAddr = match bind_addr.parse() {
         Ok(a) => a,
         Err(e) => { error!("❌ Invalid bind address {}: {}", bind_addr, e); return; }
     };
 
-    if let Some(domain) = settings.domain {
+    if settings.use_custom_cert {
+        if let (Some(cert_path), Some(key_path)) = (settings.custom_cert_path, settings.custom_key_path) {
+            info!("🔒 Starting web server with Custom SSL on https://{}", addr);
+            let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path).await;
+            match tls_config {
+                Ok(config) => {
+                    if let Err(e) = axum_server::bind_rustls(addr, config)
+                        .serve(app.into_make_service())
+                        .await
+                    {
+                        error!("❌ Custom SSL server error: {}", e);
+                    }
+                    return;
+                }
+                Err(e) => {
+                    error!("❌ Failed to load custom SSL certificates: {}", e);
+                    // Fall back to HTTP
+                }
+            }
+        } else {
+            error!("❌ use_custom_cert is true but cert_path or key_path is missing. Falling back to HTTP");
+        }
+    } else if let Some(domain) = settings.domain {
         if !domain.trim().is_empty() {
             info!("🔒 Starting web server with Auto-SSL for domain {} on https://{}", domain, addr);
             
@@ -438,6 +477,12 @@ async fn get_settings_handler(
             "web_bind_address": s.web_bind_address,
             "api_port":         s.api_port,
             "domain":           s.domain,
+            "use_custom_cert":  s.use_custom_cert,
+            "custom_cert_path": s.custom_cert_path,
+            "custom_key_path":  s.custom_key_path,
+            "web_base_path":    s.web_base_path,
+            "admin_username":   s.admin_username,
+            "admin_password":   s.admin_password,
         })).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -455,6 +500,10 @@ async fn save_settings_handler(
     if let Some(p) = update.api_port         { settings.api_port         = p; }
     if let Some(u) = update.admin_username   { settings.admin_username   = u; }
     if let Some(pw) = update.admin_password  { settings.admin_password   = pw; }
+    if let Some(uc) = update.use_custom_cert { settings.use_custom_cert  = uc; }
+    if let Some(wb) = update.web_base_path   { settings.web_base_path    = wb; }
+    settings.custom_cert_path = update.custom_cert_path;
+    settings.custom_key_path  = update.custom_key_path;
     settings.domain     = update.domain;
     match config::save_settings(&state.db_path, &settings) {
         Ok(_) => {
@@ -506,7 +555,11 @@ struct ProbeQuery {
 }
 
 async fn legacy_probe(Query(q): Query<ProbeQuery>) -> impl IntoResponse {
-    let proxy_url = format!("socks5h://{}:{}", q.bind, q.port);
+    let mut connect_bind = q.bind.as_str();
+    if connect_bind == "0.0.0.0" {
+        connect_bind = "127.0.0.1";
+    }
+    let proxy_url = format!("socks5h://{}:{}", connect_bind, q.port);
     let (lat, ip) = crate::tor_process::measure_latency(&proxy_url).await;
     let lat_str = latency_to_string(lat);
     Json(serde_json::json!({ "latency": lat_str, "tor_ip": ip }))
@@ -530,7 +583,19 @@ async fn probe_route_handler(
     };
 
     let bind_address = route.bind_address.unwrap_or_else(|| "0.0.0.0".to_string());
-    let proxy_url = format!("socks5h://{}:{}", bind_address, route.input_port);
+    let mut connect_bind = bind_address.as_str();
+    if connect_bind == "0.0.0.0" {
+        connect_bind = "127.0.0.1";
+    }
+    let proxy_url = if let (Some(u), Some(p)) = (&route.username, &route.password) {
+        if !u.is_empty() && !p.is_empty() {
+            format!("socks5h://{}:{}@{}:{}", u, p, connect_bind, route.input_port)
+        } else {
+            format!("socks5h://{}:{}", connect_bind, route.input_port)
+        }
+    } else {
+        format!("socks5h://{}:{}", connect_bind, route.input_port)
+    };
     let (lat, ip) = crate::tor_process::measure_latency(&proxy_url).await;
     let lat_str = latency_to_string(lat);
 

@@ -149,6 +149,13 @@ textarea {
 }
 
 /* Auth emoji specific styles */
+input:checked ~ .dot {
+  transform: translateX(100%);
+}
+input:checked ~ .block {
+  background-color: var(--color-brand-500, #3b82f6);
+}
+
 .auth-emoji {
   display: inline-block;
   line-height: 1;

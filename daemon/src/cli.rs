@@ -40,8 +40,8 @@ struct RouteApiItem {
     last_checked_at: Option<String>,
 }
 
-pub async fn run_cli(api_addr: &str) {
-    let api_url = format!("http://{}", api_addr);
+pub async fn run_cli(api_url_base: &str) {
+    let api_url = api_url_base.trim_end_matches('/').to_string();
     let session_cookie: Option<String> = None;
 
     loop {
@@ -57,7 +57,8 @@ pub async fn run_cli(api_addr: &str) {
         println!("  \x1b[36m5.\x1b[0m ➕ Create Route (API)");
         println!("  \x1b[36m6.\x1b[0m ✏️ Edit Route (API)");
         println!("  \x1b[36m7.\x1b[0m 🗑️ Delete Route (API)");
-        println!("  \x1b[36m8.\x1b[0m 🔐 Update Admin Credentials");
+        println!("  \x1b[36m8.\x1b[0m 🔐 Update Settings & Credentials");
+        println!("  \x1b[36m9.\x1b[0m ℹ️ View Panel Info & Credentials");
         println!("  \x1b[36m0.\x1b[0m ❌ Exit\n");
         print!("👉 Select an option: ");
         io::stdout().flush().unwrap();
@@ -99,6 +100,10 @@ pub async fn run_cli(api_addr: &str) {
                 update_admin_credentials(&api_url, session_cookie.as_deref()).await;
                 pause();
             }
+            "9" => {
+                display_panel_info().await;
+                pause();
+            }
             "0" => {
                 println!("\n👋 Exiting CLI.");
                 return;
@@ -124,6 +129,46 @@ fn pause() {
     io::stdout().flush().unwrap();
     let mut unused = String::new();
     let _ = io::stdin().read_line(&mut unused);
+}
+
+async fn display_panel_info() {
+    clear_screen();
+    println!("\x1b[1m\x1b[36m═══ ℹ️ Panel Info & Credentials ═══\x1b[0m\n");
+    let exe_path = std::env::current_exe().unwrap_or_default();
+    let dir = exe_path.parent().unwrap_or(std::path::Path::new("."));
+    let db_path = dir.join("tor_db.sqlite");
+    
+    if let Ok(settings) = crate::config::load_settings(db_path.to_str().unwrap_or("tor_db.sqlite")) {
+        let has_domain = !settings.domain.as_deref().unwrap_or("").trim().is_empty();
+        let scheme = if settings.use_custom_cert || has_domain { "https" } else { "http" };
+        let mut bind = settings.web_bind_address.clone();
+        if bind == "0.0.0.0" {
+            bind = "127.0.0.1".to_string(); // Or try to determine public IP
+        }
+        let host = if has_domain { settings.domain.clone().unwrap() } else { bind };
+        let port = settings.web_panel_port;
+        let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
+        if !base_path.is_empty() && !base_path.starts_with('/') {
+            base_path = format!("/{}", base_path);
+        }
+        if !base_path.is_empty() {
+            base_path.push('/');
+        }
+        
+        let url = if scheme == "https" && port == 443 {
+            format!("{}://{}{}", scheme, host, base_path)
+        } else if scheme == "http" && port == 80 {
+            format!("{}://{}{}", scheme, host, base_path)
+        } else {
+            format!("{}://{}:{}{}", scheme, host, port, base_path)
+        };
+        
+        println!("  \x1b[33mURL:\x1b[0m      \x1b[1m\x1b[32m{}\x1b[0m", url);
+        println!("  \x1b[33mUsername:\x1b[0m \x1b[1m\x1b[32m{}\x1b[0m", settings.admin_username);
+        println!("  \x1b[33mPassword:\x1b[0m \x1b[1m\x1b[32m{}\x1b[0m\n", settings.admin_password);
+    } else {
+        println!("\x1b[31mFailed to load settings from DB.\x1b[0m");
+    }
 }
 
 async fn fetch_status(api_url: &str) -> Option<Vec<RouteStatus>> {
@@ -346,7 +391,7 @@ async fn change_ports_with_session(api_url: &str, session: Option<&str>) {
         "api_port": port
     });
 
-    let mut req = client.put(&format!("{}/settings", api_url)).json(&payload);
+    let mut req = client.put(&format!("{}/api/settings", api_url)).json(&payload);
     if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
 
     let res = req.send().await;
@@ -473,12 +518,17 @@ async fn delete_route_cli(api_url: &str, session: Option<&str>) {
 async fn update_admin_credentials(api_url: &str, session: Option<&str>) {
     print!("New admin username (leave blank to skip): "); io::stdout().flush().unwrap(); let mut user = String::new(); io::stdin().read_line(&mut user).unwrap(); let user = user.trim().to_string();
     print!("New admin password (leave blank to skip): "); io::stdout().flush().unwrap(); let mut pass = String::new(); io::stdin().read_line(&mut pass).unwrap(); let pass = pass.trim().to_string();
-    if user.is_empty() && pass.is_empty() { println!("Nothing to do"); return; }
+    print!("New Web Base Path (leave blank to skip, '-' to clear): "); io::stdout().flush().unwrap(); let mut base = String::new(); io::stdin().read_line(&mut base).unwrap(); let base = base.trim().to_string();
+    if user.is_empty() && pass.is_empty() && base.is_empty() { println!("Nothing to do"); return; }
     let mut payload = serde_json::Map::new();
     if !user.is_empty() { payload.insert("admin_username".to_string(), serde_json::Value::String(user)); }
     if !pass.is_empty() { payload.insert("admin_password".to_string(), serde_json::Value::String(pass)); }
+    if !base.is_empty() { 
+        let final_base = if base == "-" { "".to_string() } else { base };
+        payload.insert("web_base_path".to_string(), serde_json::Value::String(final_base)); 
+    }
     let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
-    let mut req = client.put(&format!("{}/settings", api_url)).json(&payload);
+    let mut req = client.put(&format!("{}/api/settings", api_url)).json(&payload);
     if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
     let res = req.send().await;
     match res {

@@ -1,4 +1,18 @@
-const API_BASE = '/api';
+// Extract base path dynamically from current URL so API calls work correctly
+// even if panel is hosted under a subdirectory (e.g. /secret-panel/).
+const pathSegments = window.location.pathname.replace(/\/$/, '').split('/');
+// if the last segment is e.g. "index.html", we should ideally remove it, 
+// but since the server routes SPA appropriately, typically pathname is just the base path.
+// Actually, the simplest relative way is just use a relative string, or compute absolute.
+let basePath = window.location.pathname;
+if (basePath.endsWith('.html') || basePath.endsWith('.htm')) {
+    basePath = basePath.substring(0, basePath.lastIndexOf('/'));
+}
+if (!basePath.endsWith('/')) {
+    basePath += '/';
+}
+basePath = basePath.replace(/\/$/, '');
+const API_BASE = basePath + '/api';
 
 // --- i18n ---
 const translations = {
@@ -195,7 +209,14 @@ const el = {
         webPort: document.getElementById('set-web-port'),
         adminUser: document.getElementById('set-admin-user'),
         adminPass: document.getElementById('set-admin-pass'),
-        domain: document.getElementById('set-domain')
+        webBase: document.getElementById('set-web-base'),
+        domain: document.getElementById('set-domain'),
+        customCertToggle: document.getElementById('set-custom-cert-toggle'),
+        certPath: document.getElementById('set-cert-path'),
+        keyPath: document.getElementById('set-key-path'),
+        btnGenerateBase: document.getElementById('btn-generate-base'),
+        autoSslFields: document.getElementById('auto-ssl-fields'),
+        customSslFields: document.getElementById('custom-ssl-fields')
     },
     modalSettingsCloses: document.querySelectorAll('.modal-close-settings'),
     
@@ -639,7 +660,7 @@ function createNodeCard(node) {
                     </div>
                     <div class="flex justify-between items-center py-1">
                         <span class="text-slate-500 dark:text-slate-400 font-medium">${t('card_auth')}</span>
-                        <span data-el="auth-req" class="font-mono text-slate-900 dark:text-white">${(node.username && node.password) ? '<span class="auth-emoji locked">🔒</span>' : '<span class="auth-emoji unlocked">🔓&#xFE0E;</span>'}</span>
+                        <span data-el="auth-req" class="font-mono text-slate-900 dark:text-white">${(node.username && node.password) ? '<span class="auth-emoji locked">🔒</span>' : '<span class="auth-emoji unlocked">🔓</span>'}</span>
                     </div>
                 </div>
             </div>
@@ -730,7 +751,7 @@ function updateNodeCard(node) {
 
     const authEl = card.querySelector('[data-el="auth-req"]');
     if (authEl) {
-        const authHtml = (node.username && node.password) ? '<span class="auth-emoji locked">🔒</span>' : '<span class="auth-emoji unlocked">🔓&#xFE0E;</span>';
+        const authHtml = (node.username && node.password) ? '<span class="auth-emoji locked">🔒</span>' : '<span class="auth-emoji unlocked">🔓</span>';
         if (authEl.innerHTML !== authHtml) authEl.innerHTML = authHtml;
     }
 }
@@ -902,9 +923,15 @@ async function openSettingsModal() {
     const data = res.data;
     el.settingsInputs.webBind.value = data.web_bind_address || '';
     el.settingsInputs.webPort.value = data.web_panel_port || '';
-    el.settingsInputs.adminUser.value = '';
+    el.settingsInputs.adminUser.value = data.admin_username || '';
     el.settingsInputs.adminPass.value = '';
+    el.settingsInputs.webBase.value = data.web_base_path || '';
     el.settingsInputs.domain.value = data.domain || '';
+    el.settingsInputs.certPath.value = data.custom_cert_path || '';
+    el.settingsInputs.keyPath.value = data.custom_key_path || '';
+    
+    el.settingsInputs.customCertToggle.checked = !!data.use_custom_cert;
+    updateCustomCertUI();
 
     el.modalSettings.classList.remove('hidden');
     el.modalSettings.classList.add('flex');
@@ -913,6 +940,29 @@ async function openSettingsModal() {
         el.modalSettings.querySelector('div').classList.remove('scale-95');
     }, 10);
 }
+
+function updateCustomCertUI() {
+    if (el.settingsInputs.customCertToggle.checked) {
+        el.settingsInputs.domain.disabled = true;
+        el.settingsInputs.domain.classList.add('opacity-50', 'cursor-not-allowed');
+        el.settingsInputs.customSslFields.classList.remove('hidden');
+    } else {
+        el.settingsInputs.domain.disabled = false;
+        el.settingsInputs.domain.classList.remove('opacity-50', 'cursor-not-allowed');
+        el.settingsInputs.customSslFields.classList.add('hidden');
+    }
+}
+
+el.settingsInputs.customCertToggle.addEventListener('change', updateCustomCertUI);
+
+el.settingsInputs.btnGenerateBase.addEventListener('click', () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let token = '/';
+    for (let i = 0; i < 15; i++) {
+        token += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    el.settingsInputs.webBase.value = token;
+});
 
 function closeSettingsModal() {
     el.modalSettings.classList.add('opacity-0');
@@ -937,6 +987,13 @@ async function handleSettingsSave(e) {
     if (el.settingsInputs.adminPass.value) payload.admin_password = el.settingsInputs.adminPass.value;
     
     payload.domain = el.settingsInputs.domain.value.trim() || null;
+    payload.use_custom_cert = el.settingsInputs.customCertToggle.checked;
+    payload.custom_cert_path = el.settingsInputs.certPath.value.trim() || null;
+    payload.custom_key_path = el.settingsInputs.keyPath.value.trim() || null;
+    
+    let base = el.settingsInputs.webBase.value.trim();
+    if (base && !base.startsWith('/')) base = '/' + base;
+    payload.web_base_path = base || '';
 
     const res = await apiCall('/settings', {
         method: 'PUT',
@@ -952,20 +1009,17 @@ async function handleSettingsSave(e) {
         el.settingsMsg.className = "mt-3 text-sm font-medium text-emerald-500";
         el.settingsMsg.classList.remove('hidden');
 
-        // Determine the new port from the server response (fallback to input)
         const newPort = (res.data && res.data.web_panel_port) ? res.data.web_panel_port : (payload.web_panel_port || el.settingsInputs.webPort.value);
 
-        // Give the server a moment to respawn, then redirect the browser to the new port
         setTimeout(() => {
             closeSettingsModal();
             try {
                 const host = window.location.hostname;
                 const proto = window.location.protocol;
-                const path = window.location.pathname + window.location.search + window.location.hash;
-                const target = `${proto}//${host}:${newPort}${path}`;
+                let newPath = payload.web_base_path;
+                const target = `${proto}//${host}:${newPort}${newPath}`;
                 window.location.href = target;
             } catch (e) {
-                // fallback to reload if URL construction fails
                 location.reload();
             }
         }, 1400);

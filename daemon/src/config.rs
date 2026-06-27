@@ -51,6 +51,10 @@ pub struct Settings {
     pub admin_username:   String,
     pub admin_password:   String,
     pub domain:           Option<String>,
+    pub use_custom_cert:  bool,
+    pub custom_cert_path: Option<String>,
+    pub custom_key_path:  Option<String>,
+    pub web_base_path:    String,
 }
 
 impl Default for Settings {
@@ -62,6 +66,10 @@ impl Default for Settings {
             admin_username:   "admin".to_string(),
             admin_password:   "admin".to_string(),
             domain:           None,
+            use_custom_cert:  false,
+            custom_cert_path: None,
+            custom_key_path:  None,
+            web_base_path:    "".to_string(),
         }
     }
 }
@@ -74,6 +82,10 @@ pub struct SettingsUpdate {
     pub admin_username:   Option<String>,
     pub admin_password:   Option<String>,
     pub domain:           Option<String>,
+    pub use_custom_cert:  Option<bool>,
+    pub custom_cert_path: Option<String>,
+    pub custom_key_path:  Option<String>,
+    pub web_base_path:    Option<String>,
 }
 
 // ─── Bootstrap schema ────────────────────────────────────────────────────────
@@ -262,6 +274,10 @@ pub fn load_settings(db_path: &str) -> Result<Settings> {
             "admin_username"   => settings.admin_username   = row.1,
             "admin_password"   => settings.admin_password   = row.1,
             "domain"           => settings.domain           = if row.1.is_empty() { None } else { Some(row.1) },
+            "use_custom_cert"  => settings.use_custom_cert  = row.1 == "true",
+            "custom_cert_path" => settings.custom_cert_path = if row.1.is_empty() { None } else { Some(row.1) },
+            "custom_key_path"  => settings.custom_key_path  = if row.1.is_empty() { None } else { Some(row.1) },
+            "web_base_path"    => settings.web_base_path    = row.1,
             _ => {}
         }
     }
@@ -277,6 +293,10 @@ pub fn save_settings(db_path: &str, s: &Settings) -> Result<()> {
         ("admin_username",   s.admin_username.clone()),
         ("admin_password",   s.admin_password.clone()),
         ("domain",           s.domain.clone().unwrap_or_default()),
+        ("use_custom_cert",  if s.use_custom_cert { "true".to_string() } else { "false".to_string() }),
+        ("custom_cert_path", s.custom_cert_path.clone().unwrap_or_default()),
+        ("custom_key_path",  s.custom_key_path.clone().unwrap_or_default()),
+        ("web_base_path",    s.web_base_path.clone()),
     ];
     for (k, v) in pairs {
         conn.execute(

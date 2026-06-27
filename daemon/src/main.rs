@@ -72,10 +72,29 @@ async fn main() {
     // Use the web panel port as the single shared port for both UI and API
     // when the daemon is started with --web-dir. This makes UI+API share one bind.
     let api_bind = format!("{}:{}", settings.web_bind_address, settings.web_panel_port);
+    let has_domain = !settings.domain.as_deref().unwrap_or("").trim().is_empty();
+    let scheme = if settings.use_custom_cert || has_domain { "https" } else { "http" };
+    
+    // For localhost CLI connections, we should use 127.0.0.1 instead of 0.0.0.0
+    let mut connect_addr = settings.web_bind_address.clone();
+    if connect_addr == "0.0.0.0" {
+        connect_addr = "127.0.0.1".to_string();
+    }
+    // If we have a domain and Auto-SSL is active, we should try to use the domain
+    if scheme == "https" {
+        connect_addr = settings.domain.clone().unwrap_or(connect_addr);
+    }
+    
+    let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
+    if !base_path.is_empty() && !base_path.starts_with('/') {
+        base_path = format!("/{}", base_path);
+    }
+    
+    let api_url = format!("{}://{}:{}{}", scheme, connect_addr, settings.web_panel_port, base_path);
 
     // No arguments → CLI
     if args.len() == 1 {
-        run_cli(&api_bind).await;
+        run_cli(&api_url).await;
         return;
     }
 
@@ -125,7 +144,8 @@ async fn main() {
         let filter = EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| EnvFilter::new("tor_router=info"))
             .add_directive("hyper=info".parse().unwrap())
-            .add_directive("reqwest=info".parse().unwrap());
+            .add_directive("reqwest=info".parse().unwrap())
+            .add_directive("h2=info".parse().unwrap());
             
         let logger = crate::daemon::AppLogger::new();
 
@@ -137,6 +157,6 @@ async fn main() {
         run_daemon(&db_path, &api_bind, web_dir).await;
     } else {
         // No valid flags given → CLI
-        run_cli(&api_bind).await;
+        run_cli(&api_url).await;
     }
 }

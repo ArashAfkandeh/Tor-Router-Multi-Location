@@ -58,10 +58,23 @@ pub async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
         _ => NOT_CONNECTED,
     };
 
-    let ip = match client.get("https://check.torproject.org/api/ip").send().await {
+    let mut ip = match client.get("https://check.torproject.org/api/ip").send().await {
         Ok(resp) if resp.status().is_success() => resp.json::<TorIpResponse>().await.ok().map(|r| r.ip),
         _ => None,
     };
+    
+    if ip.is_none() {
+        if let Ok(resp) = client.get("https://api.ipify.org").send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    let text = text.trim().to_string();
+                    if !text.is_empty() && text.len() <= 45 {
+                        ip = Some(text);
+                    }
+                }
+            }
+        }
+    }
 
     (latency, ip)
 }

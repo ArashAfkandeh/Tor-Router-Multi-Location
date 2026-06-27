@@ -21,7 +21,9 @@
 #  │       └── tor_process.rs
 #  └── webpanel/              ← Web Panel (Frontend)
 #      ├── index.html
-#      └── ...
+#      ├── app.js
+#      ├── style.css
+#      └── Countries.html
 #
 #  Final Output in: ./dist/
 #    dist/<binary>    ← daemon
@@ -171,6 +173,9 @@ if $BUILD_DAEMON; then
     BIN_NAME="${BIN_NAME:-tor-router}"
     [[ "$TARGET" == *"windows"* ]] && BIN_NAME="${BIN_NAME}.exe"
 
+    OUT_NAME="ToRouter"
+    [[ "$TARGET" == *"windows"* ]] && OUT_NAME="${OUT_NAME}.exe"
+
     if [[ -n "$TARGET" ]]; then
         CARGO_OUT="$DAEMON_DIR/target/$TARGET/$BUILD_MODE"
     else
@@ -179,9 +184,9 @@ if $BUILD_DAEMON; then
 
     [[ ! -f "$CARGO_OUT/$BIN_NAME" ]] && log_error "Binary not found: $CARGO_OUT/$BIN_NAME" && exit 1
 
-    cp "$CARGO_OUT/$BIN_NAME" "$DIST_DIR/$BIN_NAME"
-    chmod +x "$DIST_DIR/$BIN_NAME"
-    log_ok "→ dist/$BIN_NAME  ($(du -sh "$DIST_DIR/$BIN_NAME" | cut -f1))"
+    cp "$CARGO_OUT/$BIN_NAME" "$DIST_DIR/$OUT_NAME"
+    chmod +x "$DIST_DIR/$OUT_NAME"
+    log_ok "→ dist/$OUT_NAME  ($(du -sh "$DIST_DIR/$OUT_NAME" | cut -f1))"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -205,7 +210,8 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 log_section "Phase 3 — Helper Files"
 
-BIN_FINAL="${BIN_NAME:-tor-router}"
+BIN_FINAL="ToRouter"
+[[ "$TARGET" == *"windows"* ]] && BIN_FINAL="${BIN_FINAL}.exe"
 
 # ─── run.sh ──────────────────────────────────────────────────────────────────
 cat > "$DIST_DIR/run.sh" << RUNEOF

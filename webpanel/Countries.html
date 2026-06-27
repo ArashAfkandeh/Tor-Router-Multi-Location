@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Country Flags - Tor Exit Nodes | پرچم‌های کشورها</title>
+    <script>
+        if (!window.location.pathname.endsWith('.html') && !window.location.pathname.endsWith('.htm') && !window.location.pathname.endsWith('/')) {
+            const base = document.createElement('base');
+            base.href = window.location.pathname + '/';
+            document.head.appendChild(base);
+        }
+    </script>
     <style>
         /* ===== متغیرهای تم ===== */
         :root {
@@ -806,8 +813,19 @@
                     updateStatusText();
                     countInfo.textContent = "";
                     if (pulser) pulser.classList.remove('hidden');
+                    
+                    let basePath = window.location.pathname;
+                    if (basePath.endsWith('.html') || basePath.endsWith('.htm')) {
+                        basePath = basePath.substring(0, basePath.lastIndexOf('/'));
+                    }
+                    if (!basePath.endsWith('/')) {
+                        basePath += '/';
+                    }
+                    basePath = basePath.replace(/\/$/, '');
+                    const API_BASE = basePath + '/api';
+
                     // Now fetches from cached backend proxy
-                    const response = await fetch("/api/countries");
+                    const response = await fetch(`${API_BASE}/countries`);
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`);
                     }

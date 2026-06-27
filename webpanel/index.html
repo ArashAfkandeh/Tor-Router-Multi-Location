@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ToRouter Panel</title>
+    <script>
+        if (!window.location.pathname.endsWith('.html') && !window.location.pathname.endsWith('.htm') && !window.location.pathname.endsWith('/')) {
+            const base = document.createElement('base');
+            base.href = window.location.pathname + '/';
+            document.head.appendChild(base);
+        }
+    </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%237d4698'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'/%3E%3C/svg%3E">
     <!-- Fallback to CDN for runtime Tailwind if build isn't present, to ensure it works beautifully -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -255,17 +262,48 @@
                                 <label data-i18n="modal_set_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">New Admin Password</label>
                                 <input type="password" id="set-admin-pass" placeholder="(Leave empty to keep)" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
                             </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Web Base Path</label>
+                                <div class="relative">
+                                    <input type="text" id="set-web-base" placeholder="e.g. /my-secret-panel (empty for root)" class="w-full px-4 py-2.5 pr-12 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500 font-mono text-sm">
+                                    <button type="button" id="btn-generate-base" class="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-brand-500 transition-colors" title="Generate random path">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Auto-SSL Section -->
                         <div class="space-y-4">
-                            <h4 data-i18n="modal_set_ssl" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Auto-SSL (Let's Encrypt)</h4>
-                            <div>
-                                <label data-i18n="modal_set_domain" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Domain / Subdomain</label>
-                                <input type="text" id="set-domain" placeholder="e.g. panel.example.com (empty to disable)" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                            <div class="flex items-center justify-between">
+                                <h4 data-i18n="modal_set_ssl" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-0">Auto-SSL / Custom SSL</h4>
+                                <label class="flex items-center cursor-pointer">
+                                    <span class="mr-2 text-xs font-medium text-slate-600 dark:text-slate-400">Custom Cert</span>
+                                    <div class="relative">
+                                        <input type="checkbox" id="set-custom-cert-toggle" class="sr-only">
+                                        <div class="block bg-slate-300 dark:bg-slate-600 w-10 h-6 rounded-full transition-colors duration-200"></div>
+                                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform duration-200"></div>
+                                    </div>
+                                </label>
                             </div>
-                            <div>
-                                <p data-i18n="modal_set_ssl_help" class="text-xs text-slate-500 mt-1">If domain is set, panel will automatically fetch and renew SSL certs using ALPN-01 on port 443. The panel itself stays on its configured port.</p>
+                            <div id="auto-ssl-fields" class="space-y-4">
+                                <div>
+                                    <label data-i18n="modal_set_domain" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Domain / Subdomain</label>
+                                    <input type="text" id="set-domain" placeholder="e.g. panel.example.com (empty to disable)" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <p data-i18n="modal_set_ssl_help" class="text-xs text-slate-500 mt-1">If domain is set, panel will automatically fetch and renew SSL certs using ALPN-01 on port 443. The panel itself stays on its configured port.</p>
+                                </div>
+                            </div>
+                            <div id="custom-ssl-fields" class="space-y-4 hidden">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Certificate Path (.crt / .pem)</label>
+                                    <input type="text" id="set-cert-path" placeholder="/etc/letsencrypt/live/domain/fullchain.pem" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500 font-mono text-xs">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Private Key Path (.key / .pem)</label>
+                                    <input type="text" id="set-key-path" placeholder="/etc/letsencrypt/live/domain/privkey.pem" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500 font-mono text-xs">
+                                </div>
                             </div>
                         </div>
 
@@ -333,6 +371,6 @@
         <!-- Toast Container -->
         <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
     </div>
-    <script src="app.js"></script>
+    <script src="./app.js"></script>
 </body>
 </html>
