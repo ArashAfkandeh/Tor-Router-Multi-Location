@@ -20,10 +20,15 @@
 #  │       ├── daemon.rs
 #  │       └── tor_process.rs
 #  └── webpanel/              ← Web Panel (Frontend)
-#      ├── index.html
 #      ├── app.js
+#      ├── Countries.html
+#      ├── index.html
+#      ├── package.json
+#      ├── postcss.config.js
 #      ├── style.css
-#      └── Countries.html
+#      ├── tailwind.config.js
+#      └── src/
+#          └── input.css
 #
 #  Final Output in: ./dist/
 #    dist/<binary>    ← daemon
@@ -198,9 +203,27 @@ if $BUILD_WEB; then
     else
         log_section "Phase 2 — Web Panel"
 
+        log_step "Building Tailwind CSS..."
+        check_tool npm "https://nodejs.org/"
+        if [[ -f "$WEB_DIR/package.json" ]]; then
+            (cd "$WEB_DIR" && npm ci 2>/dev/null || npm install)
+            (cd "$WEB_DIR" && npm run build:css)
+            log_ok "Tailwind CSS compiled."
+        else
+            log_warn "webpanel/package.json not found — skipping CSS build."
+        fi
+
         log_step "Copying web panel files..."
         rm -rf "$DIST_DIR/web"
-        cp -r "$WEB_DIR" "$DIST_DIR/web"
+        mkdir -p "$DIST_DIR/web"
+        rsync -a \
+            --exclude 'node_modules' \
+            --exclude 'src' \
+            --exclude 'package.json' \
+            --exclude 'package-lock.json' \
+            --exclude 'tailwind.config.js' \
+            --exclude 'postcss.config.js' \
+            "$WEB_DIR/" "$DIST_DIR/web/"
         log_ok "→ dist/web/"
     fi
 fi
