@@ -13,7 +13,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tower_http::services::ServeDir;
-use tracing::{info, error};
+use tracing::{info, warn, error, debug};
 
 use crate::config::{self, RouteConfig, SettingsUpdate};
 // web restart is signalled via the daemon's restart channel; no exec/spawn here.
@@ -67,7 +67,7 @@ pub async fn start_web_server(
 
     // ── Static files (web panel) ────────────────────────────────────────────
     let web_router = if let Some(ref dir) = web_dir {
-        // Serve the built React app; fall back to index.html for SPA routing
+        info!("Serving web panel from directory: {}", dir);
         let serve = ServeDir::new(&dir)
             .fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
         Router::new().fallback_service(serve)

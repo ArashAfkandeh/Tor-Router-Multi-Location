@@ -83,7 +83,7 @@ async fn stop_route(handles: ManagedRoute) {
     let _ = time::timeout(SHUTDOWN_TIMEOUT, handles.worker_handle).await;
 }
 
-use tracing::{info, error};
+use tracing::{info, warn, error, debug};
 
 pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) {
     let abs_db_path = match fs::canonicalize(db_path) {
@@ -222,6 +222,8 @@ async fn reload_config(
         if r.test_interval_minutes.unwrap_or(0) < 1 { r.test_interval_minutes = Some(15); }
         new_routes.insert(r.id, r);
     }
+    
+    debug!("Tick: reload_config - found {} routes in DB.", new_routes.len());
 
     let current_ids: Vec<i64> = active_handles.read().keys().cloned().collect();
 

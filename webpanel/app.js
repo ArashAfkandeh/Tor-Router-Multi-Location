@@ -43,7 +43,7 @@ const translations = {
         modal_del_title: "Delete Node",
         modal_del_msg: "Are you sure you want to delete '{name}'? This action cannot be undone.",
         modal_del_btn_confirm: "Delete",
-        modal_set_title: "Daemon Settings",
+        modal_set_title: "Settings",
         modal_set_net: "Network",
         modal_set_web_bind: "Web Panel Bind",
         modal_set_web_port: "Web Port",
@@ -105,7 +105,7 @@ const translations = {
         modal_del_title: "حذف نود",
         modal_del_msg: "آیا مطمئن هستید که می‌خواهید نود '{name}' را حذف کنید؟ این عمل قابل بازگشت نیست.",
         modal_del_btn_confirm: "حذف",
-        modal_set_title: "تنظیمات دیمون",
+        modal_set_title: "تنظیمات",
         modal_set_net: "شبکه",
         modal_set_web_bind: "آدرس اتصال رابط وب",
         modal_set_web_port: "پورت رابط وب",
@@ -238,13 +238,16 @@ el.btnLangLogin?.addEventListener('click', toggleLang);
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
+    console.debug('[App] DOMContentLoaded triggered.');
     initTheme();
     initLang();
 
     // Check initial auth state by trying to fetch routes
+    console.debug('[App] Checking auth status...');
     checkAuthStatus();
 
     // Attach Event Listeners
+    console.debug('[App] Attaching event listeners...');
     el.formLogin.addEventListener('submit', handleLogin);
     el.btnLogout.addEventListener('click', handleLogout);
     el.btnRefresh.addEventListener('click', fetchRoutes);
@@ -358,6 +361,7 @@ function applyTranslations() {
 
 // --- API Helpers ---
 async function apiCall(endpoint, options = {}) {
+    console.debug(`[API Request] -> ${options.method || 'GET'} ${API_BASE}${endpoint}`, options.body ? JSON.parse(options.body) : '');
     try {
         const res = await fetch(`${API_BASE}${endpoint}`, {
             ...options,
@@ -368,7 +372,7 @@ async function apiCall(endpoint, options = {}) {
         });
 
         if (res.status === 401) {
-            console.warn(`[API] Unauthorized access to ${endpoint}`);
+            console.warn(`[API Response] 401 Unauthorized <- ${endpoint}`);
             handleLogout(); // Session expired or invalid
             return { error: 'Unauthorized', status: 401 };
         }
@@ -376,10 +380,11 @@ async function apiCall(endpoint, options = {}) {
         const data = await res.json().catch(() => ({}));
         
         if (!res.ok) {
-            console.error(`[API] Error on ${endpoint}:`, data.error || data || `Error ${res.status}`);
+            console.error(`[API Response] Error ${res.status} <- ${endpoint}:`, data.error || data || `Error ${res.status}`);
             return { error: data.error || data || `Error ${res.status}`, status: res.status };
         }
         
+        console.debug(`[API Response] OK 200 <- ${endpoint}`, data);
         return { data, status: res.status };
     } catch (err) {
         console.error(`[API] Network connection failed on ${endpoint}:`, err);
@@ -389,16 +394,20 @@ async function apiCall(endpoint, options = {}) {
 
 // --- Auth flows ---
 async function checkAuthStatus() {
+    console.debug('[App] Fetching routes to check auth status...');
     // If we can get routes, we are authenticated
     const res = await apiCall('/routes');
     if (res.error && res.status === 401) {
+        console.debug('[App] Not authenticated (401). Showing login screen.');
         showLogin();
     } else {
+        console.debug('[App] Authenticated successfully. Showing dashboard.');
         if (res.data) {
             nodesData = res.data;
         }
         showDashboard();
         if (res.data) {
+            console.debug('[App] Rendering dashboard with data:', nodesData);
             renderDashboard(nodesData);
             // Optionally run fetchRoutes to populate latency right away
             fetchRoutes();
@@ -540,43 +549,31 @@ function renderMetrics(data) {
 
     // Partial update to prevent flashing during polling
     if (el.metricsContainer.children.length === 3) {
-        el.metricsContainer.children[0].querySelector('h3').textContent = total;
-        el.metricsContainer.children[1].querySelector('h3').textContent = healthy;
-        el.metricsContainer.children[2].querySelector('h3').textContent = error;
+        el.metricsContainer.children[0].querySelector('span.value').textContent = total;
+        el.metricsContainer.children[1].querySelector('span.value').textContent = healthy;
+        el.metricsContainer.children[2].querySelector('span.value').textContent = error;
         
-        el.metricsContainer.children[0].querySelector('p').textContent = t_total;
-        el.metricsContainer.children[1].querySelector('p').textContent = t('metric_healthy');
-        el.metricsContainer.children[2].querySelector('p').textContent = t('metric_error');
+        el.metricsContainer.children[0].querySelector('span.label').textContent = t_total;
+        el.metricsContainer.children[1].querySelector('span.label').textContent = t('metric_healthy');
+        el.metricsContainer.children[2].querySelector('span.label').textContent = t('metric_error');
         return;
     }
 
     el.metricsContainer.innerHTML = `
-        <div class="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
-            <div>
-                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">${t_total}</p>
-                <h3 class="text-xl font-semibold text-slate-900 dark:text-white mt-0.5">${total}</h3>
-            </div>
-            <div class="w-8 h-8 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center text-blue-600 dark:text-blue-400">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-            </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
+            <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+            <span class="label text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">${t_total}</span>
+            <span class="value text-xs font-bold text-slate-900 dark:text-white">${total}</span>
         </div>
-        <div class="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
-            <div>
-                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">${t('metric_healthy')}</p>
-                <h3 class="text-xl font-semibold text-emerald-600 dark:text-emerald-500 mt-0.5">${healthy}</h3>
-            </div>
-            <div class="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
+            <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+            <span class="label text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">${t('metric_healthy')}</span>
+            <span class="value text-xs font-bold text-emerald-600 dark:text-emerald-400">${healthy}</span>
         </div>
-        <div class="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
-            <div>
-                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">${t('metric_error')}</p>
-                <h3 class="text-xl font-semibold text-red-600 dark:text-red-500 mt-0.5">${error}</h3>
-            </div>
-            <div class="w-8 h-8 bg-red-50 dark:bg-red-900/30 rounded-lg flex items-center justify-center text-red-600 dark:text-red-400">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
+            <div class="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+            <span class="label text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">${t('metric_error')}</span>
+            <span class="value text-xs font-bold text-red-600 dark:text-red-400">${error}</span>
         </div>
     `;
 }
@@ -636,7 +633,7 @@ function createNodeCard(node) {
                         </div>
                         <h3 data-el="name" class="font-semibold text-base text-slate-900 dark:text-white truncate" title="${node.name}">${node.name}</h3>
                     </div>
-                    <div class="country-flag-emoji inline-flex items-center justify-center rounded-lg shadow-md shadow-slate-500/20 dark:shadow-black/40 border border-slate-200 dark:border-slate-600 transition-all duration-300 w-9 h-7 text-lg">
+                    <div class="country-flag-emoji inline-flex items-center justify-center transition-all duration-300 text-3xl">
                         ${countryFlag || node.country_code}
                     </div>
                 </div>

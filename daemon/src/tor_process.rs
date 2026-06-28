@@ -6,7 +6,7 @@ use std::time::{Duration, Instant as StdInstant};
 use parking_lot::RwLock;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 
 use crate::config::RouteConfig;
 use crate::daemon::NOT_CONNECTED;
@@ -53,9 +53,17 @@ pub async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
     };
 
     let start = StdInstant::now();
-    let latency = match client.get("https://www.gstatic.com/generate_204").send().await {
+    let res = client.get("https://www.gstatic.com/generate_204").send().await;
+    let latency = match res {
         Ok(r) if r.status().is_success() => start.elapsed(),
-        _ => NOT_CONNECTED,
+        Ok(r) => {
+            debug!("Latency check to gstatic returned status {}", r.status());
+            NOT_CONNECTED
+        }
+        Err(e) => {
+            debug!("Latency check to gstatic failed: {}", e);
+            NOT_CONNECTED
+        }
     };
 
     let mut ip = match client.get("https://check.torproject.org/api/ip").send().await {
@@ -177,7 +185,10 @@ pub async fn start_tor_instance(
 
     let bootstrapped = tokio::select! {
         r = bootstrap_rx => r.unwrap_or(false),
-        _ = tokio::time::sleep(Duration::from_secs(120)) => false,
+        _ = tokio::time::sleep(Duration::from_secs(120)) => {
+            error!("[{}] Bootstrap timeout after 120s", log_name);
+            false
+        },
     };
 
     if !bootstrapped {
@@ -185,6 +196,8 @@ pub async fn start_tor_instance(
         let _ = std::fs::remove_dir_all(&instance_dir);
         return Err("Bootstrap timeout".to_string());
     }
+    
+    debug!("[{}] Tor instance successfully bootstrapped.", log_name);
 
     let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
     let instance_dir_clone = instance_dir.clone();

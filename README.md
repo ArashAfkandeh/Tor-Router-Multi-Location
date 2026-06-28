@@ -23,26 +23,38 @@
 
 برای نصب، راه‌اندازی و مدیریت برنامه می‌توانید از اسکریپت نصب استفاده کنید:
 
-```bash
 # نصب کامل آخرین نسخه (بدون آرگومان)
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash
+```
 
 # نصب نسخه خاص
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- --version v0.1.0
+```
 
 # شروع سرویس
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- start
+```
 
 # توقف سرویس
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- stop
+```
 
 # حذف کامل
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- uninstall
+```
 
 # مشاهده راهنما
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- --help
+```
 
 # ترکیب آرگومانها (مثال: نصب نسخه خاص و شروع)
+```bash
 curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- --version v0.1.0 start
 ```
 

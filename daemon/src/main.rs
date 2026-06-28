@@ -142,7 +142,7 @@ async fn main() {
     if run_mode || web_dir.is_some() {
         // Initialize logging
         let filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("tor_router=info"))
+            .unwrap_or_else(|_| EnvFilter::new("tor_router=debug"))
             .add_directive("hyper=info".parse().unwrap())
             .add_directive("reqwest=info".parse().unwrap())
             .add_directive("h2=info".parse().unwrap());

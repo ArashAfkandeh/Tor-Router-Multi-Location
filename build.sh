@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export DEBIAN_FRONTEND=noninteractive
 # =============================================================================
 #  build.sh — Tor Router — Full Build Script
 #
@@ -37,6 +38,7 @@
 # =============================================================================
 
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -59,7 +61,7 @@ VERBOSE=false
 
 # ─── Setup Sudo ──────────────────────────────────────────────────────────────
 SUDO=""
-if [ "$EUID" -ne 0 ] && command -v sudo &>/dev/null; then
+if [ "$EUID" -ne 0 ] && command -v sudo ; then
     SUDO="sudo"
 fi
 
@@ -118,29 +120,29 @@ install_rsync() {
     echo ""
     
     # Detect package manager
-    if command -v apt &>/dev/null; then
+    if command -v apt ; then
         log_info "Detected apt package manager (Debian/Ubuntu)"
-        $SUDO apt update -qq 2>/dev/null || true
-        $SUDO apt install -y rsync -qq 2>/dev/null
-    elif command -v yum &>/dev/null; then
+        $SUDO apt update  || true
+        $SUDO apt install -y rsync 
+    elif command -v yum ; then
         log_info "Detected yum package manager (CentOS/RHEL)"
-        $SUDO yum install -y rsync -q 2>/dev/null
-    elif command -v dnf &>/dev/null; then
+        $SUDO yum install -y rsync 
+    elif command -v dnf ; then
         log_info "Detected dnf package manager (Fedora)"
-        $SUDO dnf install -y rsync -q 2>/dev/null
-    elif command -v apk &>/dev/null; then
+        $SUDO dnf install -y rsync 
+    elif command -v apk ; then
         log_info "Detected apk package manager (Alpine)"
-        $SUDO apk add rsync -q 2>/dev/null
-    elif command -v pacman &>/dev/null; then
+        $SUDO apk add rsync 
+    elif command -v pacman ; then
         log_info "Detected pacman package manager (Arch)"
-        $SUDO pacman -S --noconfirm rsync 2>/dev/null
+        $SUDO pacman -S rsync 
     else
         log_error "Could not detect package manager. Please install rsync manually."
         exit 1
     fi
     
     # Verify installation
-    if ! command -v rsync &>/dev/null; then
+    if ! command -v rsync ; then
         log_error "Failed to install rsync. Please install manually."
         exit 1
     fi
@@ -155,22 +157,22 @@ install_build_essential() {
     echo ""
     
     # Detect package manager
-    if command -v apt &>/dev/null; then
+    if command -v apt ; then
         log_info "Detected apt package manager (Debian/Ubuntu)"
-        $SUDO apt update -qq 2>/dev/null || true
-        $SUDO apt install -y build-essential -qq 2>/dev/null
-    elif command -v yum &>/dev/null; then
+        $SUDO apt update  || true
+        $SUDO apt install -y build-essential 
+    elif command -v yum ; then
         log_info "Detected yum package manager (CentOS/RHEL)"
-        $SUDO yum groupinstall -y "Development Tools" -q 2>/dev/null
-    elif command -v dnf &>/dev/null; then
+        $SUDO yum groupinstall -y "Development Tools" 
+    elif command -v dnf ; then
         log_info "Detected dnf package manager (Fedora)"
-        $SUDO dnf groupinstall -y "Development Tools" -q 2>/dev/null
-    elif command -v apk &>/dev/null; then
+        $SUDO dnf groupinstall -y "Development Tools" 
+    elif command -v apk ; then
         log_info "Detected apk package manager (Alpine)"
-        $SUDO apk add build-base -q 2>/dev/null
+        $SUDO apk add build-base 
     else
         log_error "Could not detect package manager. Please install build-essential manually:"
-        echo "  Debian/Ubuntu: apt install -y build-essential"
+        echo "  Debian/Ubuntu: apt install -y -qq build-essential"
         echo "  CentOS/RHEL:   yum groupinstall -y 'Development Tools'"
         echo "  Fedora:        dnf groupinstall -y 'Development Tools'"
         echo "  Alpine:        apk add build-base"
@@ -178,7 +180,7 @@ install_build_essential() {
     fi
     
     # Verify installation
-    if ! command -v cc &>/dev/null; then
+    if ! command -v cc ; then
         log_error "Failed to install C compiler. Please install manually."
         exit 1
     fi
@@ -190,7 +192,7 @@ install_build_essential() {
 # ─── Install Rust if missing ────────────────────────────────────────────────
 install_rust() {
     # Check if Rust is already installed
-    if command -v cargo &>/dev/null; then
+    if command -v cargo ; then
         log_info "Rust/Cargo already installed: $(cargo --version)"
         return 0
     fi
@@ -199,20 +201,20 @@ install_rust() {
     echo ""
     
     # Check if rustup is already installed but not in PATH
-    if command -v rustup &>/dev/null; then
+    if command -v rustup ; then
         log_info "rustup found, installing Rust toolchain..."
-        rustup default stable -q 2>/dev/null
-        rustup update -q 2>/dev/null
+        rustup default stable 
+        rustup update 
     else
         # Install rustup with quiet mode
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q 2>/dev/null
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 
         
         # Source cargo environment for current session
-        source "$HOME/.cargo/env" 2>/dev/null
+        source "$HOME/.cargo/env" 
     fi
     
     # Verify installation
-    if ! command -v cargo &>/dev/null; then
+    if ! command -v cargo ; then
         log_error "Failed to install Rust/Cargo. Please install manually:"
         echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
         exit 1
@@ -228,22 +230,22 @@ install_nodejs() {
     echo ""
     
     # Detect package manager and install Node.js
-    if command -v apt &>/dev/null; then
+    if command -v apt ; then
         log_info "Detected apt package manager (Debian/Ubuntu)"
         # Add NodeSource repository for latest Node.js
-        curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO bash - 2>/dev/null
-        $SUDO apt install -y nodejs -qq 2>/dev/null
-    elif command -v yum &>/dev/null; then
+        curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO bash - 
+        $SUDO apt install -y nodejs 
+    elif command -v yum ; then
         log_info "Detected yum package manager (CentOS/RHEL)"
-        curl -fsSL https://rpm.nodesource.com/setup_20.x | $SUDO bash - 2>/dev/null
-        $SUDO yum install -y nodejs -q 2>/dev/null
-    elif command -v dnf &>/dev/null; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | $SUDO bash - 
+        $SUDO yum install -y nodejs 
+    elif command -v dnf ; then
         log_info "Detected dnf package manager (Fedora)"
-        curl -fsSL https://rpm.nodesource.com/setup_20.x | $SUDO bash - 2>/dev/null
-        $SUDO dnf install -y nodejs -q 2>/dev/null
-    elif command -v apk &>/dev/null; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | $SUDO bash - 
+        $SUDO dnf install -y nodejs 
+    elif command -v apk ; then
         log_info "Detected apk package manager (Alpine)"
-        $SUDO apk add nodejs npm -q 2>/dev/null
+        $SUDO apk add nodejs npm 
     else
         log_error "Could not detect package manager. Please install Node.js manually:"
         echo "  Visit: https://nodejs.org/"
@@ -251,7 +253,7 @@ install_nodejs() {
     fi
     
     # Verify installation
-    if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
+    if ! command -v node  || ! command -v npm ; then
         log_error "Failed to install Node.js/npm. Please install manually."
         echo "  Visit: https://nodejs.org/"
         exit 1
@@ -265,18 +267,18 @@ install_nodejs() {
 # ─── Install Tor dependencies (libevent) ──────────────────────────────────
 install_tor_deps() {
     log_info "Installing dependencies for Tor binary (libevent, libssl)..."
-    if command -v apt &>/dev/null; then
-        $SUDO apt update -qq 2>/dev/null || true
-        $SUDO apt install -y tor -qq 2>/dev/null
-    elif command -v yum &>/dev/null; then
-        $SUDO yum install -y epel-release -q 2>/dev/null
-        $SUDO yum install -y tor -q 2>/dev/null
-    elif command -v dnf &>/dev/null; then
-        $SUDO dnf install -y tor -q 2>/dev/null
-    elif command -v apk &>/dev/null; then
-        $SUDO apk add tor -q 2>/dev/null
-    elif command -v pacman &>/dev/null; then
-        $SUDO pacman -S --noconfirm tor 2>/dev/null
+    if command -v apt ; then
+        $SUDO apt update  || true
+        $SUDO apt install -y tor || true 
+    elif command -v yum ; then
+        $SUDO yum install -y epel-release 
+        $SUDO yum install -y tor 
+    elif command -v dnf ; then
+        $SUDO dnf install -y tor 
+    elif command -v apk ; then
+        $SUDO apk add tor 
+    elif command -v pacman ; then
+        $SUDO pacman -S tor 
     else
         log_warn "Could not detect package manager to install Tor dependencies."
     fi
@@ -284,7 +286,7 @@ install_tor_deps() {
 
 # ─── Check and install tools ────────────────────────────────────────────────
 check_tool() {
-    if ! command -v "$1" &>/dev/null; then
+    if ! command -v "$1" ; then
         case "$1" in
             cargo|rustc)
                 install_rust
@@ -318,8 +320,8 @@ log_info "Mode : ${BOLD}$BUILD_MODE${RESET}  |  Root : $SCRIPT_DIR"
 if $CLEAN_FIRST; then
     log_step "Cleaning..."
     rm -rf "$DIST_DIR"
-    [[ -d "$DAEMON_DIR" ]] && (cd "$DAEMON_DIR" && cargo clean -q 2>/dev/null)
-    rm -rf "$WEB_DIR/dist" "$WEB_DIR/.vite" "$WEB_DIR/.next" "$WEB_DIR/build" 2>/dev/null || true
+    [[ -d "$DAEMON_DIR" ]] && (cd "$DAEMON_DIR" && cargo clean )
+    rm -rf "$WEB_DIR/dist" "$WEB_DIR/.vite" "$WEB_DIR/.next" "$WEB_DIR/build"  || true
     log_ok "Cleaned."
 fi
 mkdir -p "$DIST_DIR"
@@ -368,11 +370,11 @@ if $BUILD_DAEMON; then
     [[ "$BUILD_MODE" == "release" ]] && CARGO_ARGS+=("--release")
     [[ -n "$TARGET" ]]               && CARGO_ARGS+=("--target" "$TARGET")
     $VERBOSE                         && CARGO_ARGS+=("--verbose")
-    $VERBOSE || CARGO_ARGS+=("-q")
+    # Removed quiet flag logic
 
-    if [[ -n "$TARGET" ]] && ! rustup target list --installed 2>/dev/null | grep -q "$TARGET"; then
+    if [[ -n "$TARGET" ]] && ! rustup target list --installed  | grep "$TARGET"; then
         log_warn "Target '$TARGET' is not installed — installing..."
-        rustup target add "$TARGET" -q 2>/dev/null
+        rustup target add "$TARGET" 
     fi
 
     T0=$(date +%s)
@@ -399,7 +401,7 @@ if $BUILD_DAEMON; then
     chmod +x "$DIST_DIR/$OUT_NAME"
     
     # Strip binary to reduce size
-    if command -v strip &>/dev/null; then
+    if command -v strip ; then
         strip "$DIST_DIR/$OUT_NAME"
     fi
     
@@ -420,13 +422,13 @@ if $BUILD_WEB; then
         
         if [[ -f "$WEB_DIR/package.json" ]]; then
             # Install dependencies quietly
-            (cd "$WEB_DIR" && { npm ci --silent 2>/dev/null || npm install --silent 2>/dev/null; })
+            (cd "$WEB_DIR" && { npm ci  || npm install ; })
             
             # Update caniuse-lite to remove warning
-            (cd "$WEB_DIR" && npx --yes update-browserslist-db@latest --silent 2>/dev/null || true)
+            (cd "$WEB_DIR" && npx --yes update-browserslist-db@latest  || true)
             
             # Build CSS quietly
-            (cd "$WEB_DIR" && npm run build:css --silent 2>/dev/null)
+            (cd "$WEB_DIR" && npm run build:css )
             log_ok "Tailwind CSS compiled."
         else
             log_warn "webpanel/package.json not found — skipping CSS build."
@@ -443,7 +445,7 @@ if $BUILD_WEB; then
             --exclude 'package-lock.json' \
             --exclude 'tailwind.config.js' \
             --exclude 'postcss.config.js' \
-            "$WEB_DIR/" "$DIST_DIR/web/" 2>/dev/null
+            "$WEB_DIR/" "$DIST_DIR/web/" 
         log_ok "→ dist/web/"
     fi
 fi
@@ -459,6 +461,7 @@ BIN_FINAL="ToRouter"
 # ─── run.sh ──────────────────────────────────────────────────────────────────
 cat > "$DIST_DIR/run.sh" << RUNEOF
 #!/usr/bin/env bash
+export DEBIAN_FRONTEND=noninteractive
 # Run Tor Router
 DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 BIN="\$DIR/${BIN_FINAL}"

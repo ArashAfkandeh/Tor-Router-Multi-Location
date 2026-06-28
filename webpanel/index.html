@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ToRouter Panel</title>
+    <style>
+        html { opacity: 0; transition: opacity 0.3s ease; }
+        html.loaded { opacity: 1; }
+    </style>
     <script>
         let bp = window.location.pathname;
         if (!bp.endsWith('.html') && !bp.endsWith('.htm') && !bp.endsWith('/')) {
@@ -18,7 +22,15 @@
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = bp + 'styles.css';
+        link.onload = () => {
+            document.documentElement.classList.add('loaded');
+        };
         document.head.appendChild(link);
+        
+        // Fallback in case of network issues or fast cache
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => document.documentElement.classList.add('loaded'), 50);
+        });
     </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%237d4698'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'/%3E%3C/svg%3E">
     <script type="module" defer>
@@ -121,30 +133,32 @@
 
             <main class="flex-1 w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
                 <!-- Action Bar -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                     <div>
-                        <h2 data-i18n="dash_title" class="text-xl font-bold text-slate-900 dark:text-white">Exit Nodes</h2>
-                        <p data-i18n="dash_desc" class="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage and monitor active Tor routing nodes.</p>
+                        <h2 data-i18n="dash_title" class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Exit Nodes</h2>
+                        <p data-i18n="dash_desc" class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage and monitor active Tor routing nodes.</p>
                     </div>
-                    <div class="flex flex-nowrap overflow-x-auto no-scrollbar gap-2 w-full sm:w-auto pb-1 sm:pb-0">
-                        <a href="Countries.html" target="_blank" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-1.5">
-                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            <span data-i18n="btn_countries" class="whitespace-nowrap">Tor Countries</span>
-                        </a>
-                        <button id="btn-create-route" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-brand-500 flex items-center gap-1.5">
-                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            <span data-i18n="btn_add_node" class="whitespace-nowrap">Add Node</span>
-                        </button>
-                        <button id="btn-view-logs" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-slate-500 flex items-center gap-1.5">
-                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-                            <span data-i18n="btn_view_logs" class="whitespace-nowrap">Logs</span>
-                        </button>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
+                        <!-- Metrics Overview -->
+                        <div class="flex flex-wrap items-center gap-2 shrink-0" id="metrics-container">
+                            <!-- Populated via JS -->
+                        </div>
+                        <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+                        <div class="flex flex-nowrap overflow-x-auto no-scrollbar gap-2 w-full sm:w-auto pb-1 sm:pb-0 shrink-0">
+                            <a href="Countries.html" target="_blank" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-1.5">
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <span data-i18n="btn_countries" class="whitespace-nowrap">Tor Countries</span>
+                            </a>
+                            <button id="btn-create-route" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-brand-500 flex items-center gap-1.5">
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                <span data-i18n="btn_add_node" class="whitespace-nowrap">Add Node</span>
+                            </button>
+                            <button id="btn-view-logs" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-slate-500 flex items-center gap-1.5">
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                                <span data-i18n="btn_view_logs" class="whitespace-nowrap">Logs</span>
+                            </button>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Metrics Overview -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6" id="metrics-container">
-                    <!-- Populated via JS -->
                 </div>
 
                 <!-- Nodes Grid -->
@@ -156,14 +170,14 @@
 
         <!-- Node Modal -->
         <div id="modal-route" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
-                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+            <div class="bg-white dark:bg-slate-800 w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
                     <h3 id="modal-route-title" data-i18n="modal_route_title" class="text-lg font-semibold text-slate-900 dark:text-white">Create Node</h3>
                     <button class="modal-close p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <div class="p-6">
+                <div class="p-6 overflow-y-auto no-scrollbar">
                     <form id="form-route" class="space-y-5">
                         <input type="hidden" id="route-id">
                         <div>
@@ -217,14 +231,14 @@
 
         <!-- Settings Modal -->
         <div id="modal-settings" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-slate-800 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
-                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+            <div class="bg-white dark:bg-slate-800 w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
                     <h3 data-i18n="modal_set_title" class="text-lg font-semibold text-slate-900 dark:text-white">Settings</h3>
                     <button class="modal-close-settings p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <div class="p-6">
+                <div class="p-6 overflow-y-auto no-scrollbar">
                     <form id="form-settings" class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- Network Section -->
                         <div class="space-y-4">

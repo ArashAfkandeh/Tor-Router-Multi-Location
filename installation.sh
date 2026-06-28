@@ -1,4 +1,5 @@
 #!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
 
 # Colors for terminal output
 RED='\033[0;31m'
@@ -37,7 +38,7 @@ print_colored() {
 
 # Function to check if service is running
 is_service_active() {
-    systemctl is-active --quiet ${SERVICE_NAME}.service
+    systemctl is-active ${SERVICE_NAME}.service
     return $?
 }
 
@@ -59,7 +60,7 @@ start_service() {
     
     # Install required packages
     print_colored "$YELLOW" "📦 Installing required packages (libssl-dev, libevent-dev)..."
-    sudo apt-get update -qq
+    sudo apt-get update
     sudo apt-get install -y libssl-dev libevent-dev
     if [ $? -ne 0 ]; then
         print_colored "$RED" "✗ Error: Failed to install required packages"

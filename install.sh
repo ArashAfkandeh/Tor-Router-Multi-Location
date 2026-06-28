@@ -1,4 +1,5 @@
 #!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
 
 # Colors for terminal output
 RED='\033[0;31m'
@@ -78,7 +79,7 @@ download_tarball() {
     download_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}/${asset_name}"
     
     print_colored "$YELLOW" "📥 Downloading: ${asset_name}"
-    curl -L -o "$TARBALL_PATH" "$download_url" --fail --silent --show-error
+    curl -L -o "$TARBALL_PATH" "$download_url" --fail --show-error
     
     if [ $? -ne 0 ] || [ ! -f "$TARBALL_PATH" ]; then
         print_colored "$RED" "✗ Error: Failed to download from ${download_url}"
@@ -109,7 +110,7 @@ cleanup_tarball() {
 # Function to install dependencies
 install_dependencies() {
     print_colored "$YELLOW" "📦 Installing dependencies..."
-    apt update -qq
+    apt update
     apt install -y curl
     print_colored "$GREEN" "✓ Dependencies installed successfully"
 }
