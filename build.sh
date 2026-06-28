@@ -106,12 +106,177 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-export PATH="$HOME/.cargo/bin:$PATH"
+# ─── Install rsync if missing ───────────────────────────────────────────────
+install_rsync() {
+    log_warn "rsync not found. Installing rsync..."
+    echo ""
+    
+    # Detect package manager
+    if command -v apt &>/dev/null; then
+        log_info "Detected apt package manager (Debian/Ubuntu)"
+        apt update -qq 2>/dev/null
+        apt install -y rsync -qq 2>/dev/null
+    elif command -v yum &>/dev/null; then
+        log_info "Detected yum package manager (CentOS/RHEL)"
+        yum install -y rsync -q 2>/dev/null
+    elif command -v dnf &>/dev/null; then
+        log_info "Detected dnf package manager (Fedora)"
+        dnf install -y rsync -q 2>/dev/null
+    elif command -v apk &>/dev/null; then
+        log_info "Detected apk package manager (Alpine)"
+        apk add rsync -q 2>/dev/null
+    elif command -v pacman &>/dev/null; then
+        log_info "Detected pacman package manager (Arch)"
+        pacman -S --noconfirm rsync 2>/dev/null
+    else
+        log_error "Could not detect package manager. Please install rsync manually."
+        exit 1
+    fi
+    
+    # Verify installation
+    if ! command -v rsync &>/dev/null; then
+        log_error "Failed to install rsync. Please install manually."
+        exit 1
+    fi
+    
+    log_ok "rsync installed successfully: $(rsync --version | head -n1)"
+    echo ""
+}
 
+# ─── Install build-essential if missing ─────────────────────────────────────
+install_build_essential() {
+    log_warn "C compiler/linker (cc) not found. Installing build-essential..."
+    echo ""
+    
+    # Detect package manager
+    if command -v apt &>/dev/null; then
+        log_info "Detected apt package manager (Debian/Ubuntu)"
+        apt update -qq 2>/dev/null
+        apt install -y build-essential -qq 2>/dev/null
+    elif command -v yum &>/dev/null; then
+        log_info "Detected yum package manager (CentOS/RHEL)"
+        yum groupinstall -y "Development Tools" -q 2>/dev/null
+    elif command -v dnf &>/dev/null; then
+        log_info "Detected dnf package manager (Fedora)"
+        dnf groupinstall -y "Development Tools" -q 2>/dev/null
+    elif command -v apk &>/dev/null; then
+        log_info "Detected apk package manager (Alpine)"
+        apk add build-base -q 2>/dev/null
+    else
+        log_error "Could not detect package manager. Please install build-essential manually:"
+        echo "  Debian/Ubuntu: apt install -y build-essential"
+        echo "  CentOS/RHEL:   yum groupinstall -y 'Development Tools'"
+        echo "  Fedora:        dnf groupinstall -y 'Development Tools'"
+        echo "  Alpine:        apk add build-base"
+        exit 1
+    fi
+    
+    # Verify installation
+    if ! command -v cc &>/dev/null; then
+        log_error "Failed to install C compiler. Please install manually."
+        exit 1
+    fi
+    
+    log_ok "C compiler installed successfully: $(cc --version | head -n1)"
+    echo ""
+}
+
+# ─── Install Rust if missing ────────────────────────────────────────────────
+install_rust() {
+    # Check if Rust is already installed
+    if command -v cargo &>/dev/null; then
+        log_info "Rust/Cargo already installed: $(cargo --version)"
+        return 0
+    fi
+    
+    log_warn "Rust/Cargo not found. Installing Rust..."
+    echo ""
+    
+    # Check if rustup is already installed but not in PATH
+    if command -v rustup &>/dev/null; then
+        log_info "rustup found, installing Rust toolchain..."
+        rustup default stable -q 2>/dev/null
+        rustup update -q 2>/dev/null
+    else
+        # Install rustup with quiet mode
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q 2>/dev/null
+        
+        # Source cargo environment for current session
+        source "$HOME/.cargo/env" 2>/dev/null
+    fi
+    
+    # Verify installation
+    if ! command -v cargo &>/dev/null; then
+        log_error "Failed to install Rust/Cargo. Please install manually:"
+        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+        exit 1
+    fi
+    
+    log_ok "Rust/Cargo installed successfully: $(cargo --version)"
+    echo ""
+}
+
+# ─── Install Node.js if missing ─────────────────────────────────────────────
+install_nodejs() {
+    log_warn "Node.js/npm not found. Installing Node.js..."
+    echo ""
+    
+    # Detect package manager and install Node.js
+    if command -v apt &>/dev/null; then
+        log_info "Detected apt package manager (Debian/Ubuntu)"
+        # Add NodeSource repository for latest Node.js
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null
+        apt install -y nodejs -qq 2>/dev/null
+    elif command -v yum &>/dev/null; then
+        log_info "Detected yum package manager (CentOS/RHEL)"
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - 2>/dev/null
+        yum install -y nodejs -q 2>/dev/null
+    elif command -v dnf &>/dev/null; then
+        log_info "Detected dnf package manager (Fedora)"
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - 2>/dev/null
+        dnf install -y nodejs -q 2>/dev/null
+    elif command -v apk &>/dev/null; then
+        log_info "Detected apk package manager (Alpine)"
+        apk add nodejs npm -q 2>/dev/null
+    else
+        log_error "Could not detect package manager. Please install Node.js manually:"
+        echo "  Visit: https://nodejs.org/"
+        exit 1
+    fi
+    
+    # Verify installation
+    if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
+        log_error "Failed to install Node.js/npm. Please install manually."
+        echo "  Visit: https://nodejs.org/"
+        exit 1
+    fi
+    
+    log_ok "Node.js installed successfully: $(node --version)"
+    log_ok "npm installed successfully: $(npm --version)"
+    echo ""
+}
+
+# ─── Check and install tools ────────────────────────────────────────────────
 check_tool() {
     if ! command -v "$1" &>/dev/null; then
-        log_error "Tool '$1' not found.${2:+  Hint: $2}"
-        exit 1
+        case "$1" in
+            cargo|rustc)
+                install_rust
+                ;;
+            cc|gcc)
+                install_build_essential
+                ;;
+            npm|node|nodejs)
+                install_nodejs
+                ;;
+            rsync)
+                install_rsync
+                ;;
+            *)
+                log_error "Tool '$1' not found.${2:+  Hint: $2}"
+                exit 1
+                ;;
+        esac
     fi
 }
 
@@ -124,7 +289,7 @@ log_info "Mode : ${BOLD}$BUILD_MODE${RESET}  |  Root : $SCRIPT_DIR"
 if $CLEAN_FIRST; then
     log_step "Cleaning..."
     rm -rf "$DIST_DIR"
-    [[ -d "$DAEMON_DIR" ]] && (cd "$DAEMON_DIR" && cargo clean)
+    [[ -d "$DAEMON_DIR" ]] && (cd "$DAEMON_DIR" && cargo clean -q 2>/dev/null)
     rm -rf "$WEB_DIR/dist" "$WEB_DIR/.vite" "$WEB_DIR/.next" "$WEB_DIR/build" 2>/dev/null || true
     log_ok "Cleaned."
 fi
@@ -135,7 +300,15 @@ mkdir -p "$DIST_DIR"
 # ══════════════════════════════════════════════════════════════════════════════
 if $BUILD_DAEMON; then
     log_section "Phase 1 — Daemon (Rust)"
-    check_tool cargo "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    
+    # Check for C compiler (will auto-install if missing)
+    check_tool cc
+    
+    # Check for cargo (will auto-install if missing)
+    check_tool cargo
+    
+    # Make sure cargo is in PATH for this session
+    export PATH="$HOME/.cargo/bin:$PATH"
 
     [[ ! -d "$DAEMON_DIR" ]]        && log_error "Daemon directory not found: $DAEMON_DIR"     && exit 1
     [[ ! -f "$DAEMON_DIR/Cargo.toml" ]] && log_error "Cargo.toml not found."              && exit 1
@@ -163,10 +336,11 @@ if $BUILD_DAEMON; then
     [[ "$BUILD_MODE" == "release" ]] && CARGO_ARGS+=("--release")
     [[ -n "$TARGET" ]]               && CARGO_ARGS+=("--target" "$TARGET")
     $VERBOSE                         && CARGO_ARGS+=("--verbose")
+    $VERBOSE || CARGO_ARGS+=("-q")
 
     if [[ -n "$TARGET" ]] && ! rustup target list --installed 2>/dev/null | grep -q "$TARGET"; then
         log_warn "Target '$TARGET' is not installed — installing..."
-        rustup target add "$TARGET"
+        rustup target add "$TARGET" -q 2>/dev/null
     fi
 
     T0=$(date +%s)
@@ -204,16 +378,24 @@ if $BUILD_WEB; then
         log_section "Phase 2 — Web Panel"
 
         log_step "Building Tailwind CSS..."
-        check_tool npm "https://nodejs.org/"
+        check_tool npm
+        
         if [[ -f "$WEB_DIR/package.json" ]]; then
-            (cd "$WEB_DIR" && npm ci 2>/dev/null || npm install)
-            (cd "$WEB_DIR" && npm run build:css)
+            # Install dependencies quietly
+            (cd "$WEB_DIR" && npm ci --silent 2>/dev/null || npm install --silent 2>/dev/null)
+            
+            # Update caniuse-lite to remove warning
+            (cd "$WEB_DIR" && npx --yes update-browserslist-db@latest --silent 2>/dev/null || true)
+            
+            # Build CSS quietly
+            (cd "$WEB_DIR" && npm run build:css --silent 2>/dev/null)
             log_ok "Tailwind CSS compiled."
         else
             log_warn "webpanel/package.json not found — skipping CSS build."
         fi
 
         log_step "Copying web panel files..."
+        check_tool rsync
         rm -rf "$DIST_DIR/web"
         mkdir -p "$DIST_DIR/web"
         rsync -a \
@@ -223,7 +405,7 @@ if $BUILD_WEB; then
             --exclude 'package-lock.json' \
             --exclude 'tailwind.config.js' \
             --exclude 'postcss.config.js' \
-            "$WEB_DIR/" "$DIST_DIR/web/"
+            "$WEB_DIR/" "$DIST_DIR/web/" 2>/dev/null
         log_ok "→ dist/web/"
     fi
 fi
