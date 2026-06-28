@@ -115,19 +115,19 @@ install_rsync() {
     if command -v apt &>/dev/null; then
         log_info "Detected apt package manager (Debian/Ubuntu)"
         apt update -qq 2>/dev/null
-        apt install -y rsync -qq 2>/dev/null
+        apt install -y rsync libssl-dev libevent-dev -qq 2>/dev/null
     elif command -v yum &>/dev/null; then
         log_info "Detected yum package manager (CentOS/RHEL)"
-        yum install -y rsync -q 2>/dev/null
+        yum install -y rsync openssl-devel libevent-devel -q 2>/dev/null
     elif command -v dnf &>/dev/null; then
         log_info "Detected dnf package manager (Fedora)"
-        dnf install -y rsync -q 2>/dev/null
+        dnf install -y rsync openssl-devel libevent-devel -q 2>/dev/null
     elif command -v apk &>/dev/null; then
         log_info "Detected apk package manager (Alpine)"
-        apk add rsync -q 2>/dev/null
+        apk add rsync openssl-dev libevent-dev -q 2>/dev/null
     elif command -v pacman &>/dev/null; then
         log_info "Detected pacman package manager (Arch)"
-        pacman -S --noconfirm rsync 2>/dev/null
+        pacman -S --noconfirm rsync openssl libevent 2>/dev/null
     else
         log_error "Could not detect package manager. Please install rsync manually."
         exit 1
