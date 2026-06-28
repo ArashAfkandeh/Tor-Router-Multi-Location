@@ -147,7 +147,7 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
     };
 
     let active_routes: Arc<RwLock<HashMap<i64, ManagedRoute>>> = Arc::new(RwLock::new(HashMap::new()));
-
+    
     let mut ticker = time::interval(Duration::from_secs(5));
     loop {
         tokio::select! {
@@ -218,7 +218,7 @@ async fn reload_config(
 ) {
     let mut new_routes: HashMap<i64, RouteConfig> = HashMap::new();
     for mut r in config.routes {
-        if r.swap_interval_hours.unwrap_or(0) == 0 { r.swap_interval_hours = Some(24); }
+        if r.swap_interval_minutes.unwrap_or(0) == 0 { r.swap_interval_minutes = Some(1440); }
         if r.test_interval_minutes.unwrap_or(0) < 1 { r.test_interval_minutes = Some(15); }
         new_routes.insert(r.id, r);
     }

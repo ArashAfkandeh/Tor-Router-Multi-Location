@@ -21,13 +21,40 @@
 
 ## شروع سریع
 
+برای نصب، راه‌اندازی و مدیریت برنامه می‌توانید از اسکریپت نصب استفاده کنید:
+
+```bash
+# نصب کامل آخرین نسخه (بدون آرگومان)
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash
+
+# نصب نسخه خاص
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- --version v0.1.0
+
+# شروع سرویس
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- start
+
+# توقف سرویس
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- stop
+
+# حذف کامل
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- uninstall
+
+# مشاهده راهنما
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- --help
+
+# ترکیب آرگومانها (مثال: نصب نسخه خاص و شروع)
+curl -s https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/install.sh | sudo bash -s -- --version v0.1.0 start
+```
+
+### اجرای دستی (برای توسعه‌دهندگان)
+
 ```bash
 cd /root/ToRouter
 ./build.sh
 ./dist/torouter --run
 ```
 
-یا با وب پنل (بزودی):
+اجرا با وب پنل:
 
 ```bash
 ./dist/torouter --web-dir ./web

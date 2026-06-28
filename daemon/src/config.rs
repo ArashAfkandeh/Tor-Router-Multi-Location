@@ -12,7 +12,7 @@ pub struct RouteConfig {
     pub username: Option<String>,
     pub password: Option<String>,
     pub country_code: String,
-    pub swap_interval_hours: Option<u64>,
+    pub swap_interval_minutes: Option<u64>,
     pub test_interval_minutes: Option<u64>,
     pub restart_trigger: Option<String>,
     pub tor_ip: Option<String>,
@@ -28,7 +28,7 @@ impl PartialEq for RouteConfig {
             && self.username == other.username
             && self.password == other.password
             && self.country_code == other.country_code
-            && self.swap_interval_hours == other.swap_interval_hours
+            && self.swap_interval_minutes == other.swap_interval_minutes
             && self.test_interval_minutes == other.test_interval_minutes
             && self.restart_trigger == other.restart_trigger
     }
@@ -101,7 +101,7 @@ pub fn init_db(db_path: &str) -> Result<()> {
             username              TEXT,
             password              TEXT,
             country_code          TEXT    NOT NULL,
-            swap_interval_hours   INTEGER NOT NULL DEFAULT 24,
+            swap_interval_minutes INTEGER NOT NULL DEFAULT 1440,
             test_interval_minutes INTEGER NOT NULL DEFAULT 15,
             tor_ip                TEXT,
             last_checked_at       TEXT
@@ -136,7 +136,7 @@ pub fn init_db(db_path: &str) -> Result<()> {
 pub fn load_from_db(db_path: &str) -> Result<Config> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, bind_address, input_port, username, password, country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at, restart_trigger FROM routes"
+        "SELECT id, name, bind_address, input_port, username, password, country_code, swap_interval_minutes, test_interval_minutes, tor_ip, last_checked_at, restart_trigger FROM routes"
     )?;
 
     let route_iter = stmt.query_map([], |row| {
@@ -150,7 +150,7 @@ pub fn load_from_db(db_path: &str) -> Result<Config> {
             username:              username.filter(|s| !s.is_empty()),
             password:              password.filter(|s| !s.is_empty()),
             country_code:          row.get(6)?,
-            swap_interval_hours:   Some(row.get::<_, i64>(7)? as u64),
+            swap_interval_minutes: Some(row.get::<_, i64>(7)? as u64),
             test_interval_minutes: Some(row.get::<_, i64>(8)? as u64),
             tor_ip:                row.get(9)?,
             last_checked_at:       row.get(10)?,
@@ -169,7 +169,7 @@ pub fn get_route_by_id(db_path: &str, id: i64) -> Result<RouteConfig> {
     let conn = Connection::open(db_path)?;
     conn.query_row(
         "SELECT id, name, bind_address, input_port, username, password,
-                country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at, restart_trigger
+                country_code, swap_interval_minutes, test_interval_minutes, tor_ip, last_checked_at, restart_trigger
          FROM routes WHERE id=?1",
         params![id],
         |row| {
@@ -183,7 +183,7 @@ pub fn get_route_by_id(db_path: &str, id: i64) -> Result<RouteConfig> {
                 username:              username.filter(|s| !s.is_empty()),
                 password:              password.filter(|s| !s.is_empty()),
                 country_code:          row.get(6)?,
-                swap_interval_hours:   Some(row.get::<_, i64>(7)? as u64),
+                swap_interval_minutes: Some(row.get::<_, i64>(7)? as u64),
                 test_interval_minutes: Some(row.get::<_, i64>(8)? as u64),
                 tor_ip:                row.get(9)?,
                 last_checked_at:       row.get(10)?,
@@ -198,7 +198,7 @@ pub fn create_route(db_path: &str, route: &RouteConfig) -> Result<i64> {
     conn.execute(
         "INSERT INTO routes
             (name, bind_address, input_port, username, password,
-             country_code, swap_interval_hours, test_interval_minutes, tor_ip, last_checked_at, restart_trigger)
+             country_code, swap_interval_minutes, test_interval_minutes, tor_ip, last_checked_at, restart_trigger)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
         params![
             route.name,
@@ -207,7 +207,7 @@ pub fn create_route(db_path: &str, route: &RouteConfig) -> Result<i64> {
             route.username,
             route.password,
             route.country_code,
-            route.swap_interval_hours.unwrap_or(24) as i64,
+            route.swap_interval_minutes.unwrap_or(1440) as i64,
             route.test_interval_minutes.unwrap_or(15) as i64,
             route.tor_ip,
             route.last_checked_at,
@@ -222,7 +222,7 @@ pub fn update_route(db_path: &str, id: i64, route: &RouteConfig) -> Result<()> {
     conn.execute(
         "UPDATE routes SET
             name=?1, bind_address=?2, input_port=?3, username=?4, password=?5,
-            country_code=?6, swap_interval_hours=?7, test_interval_minutes=?8, restart_trigger=?9
+            country_code=?6, swap_interval_minutes=?7, test_interval_minutes=?8, restart_trigger=?9
          WHERE id=?10",
         params![
             route.name,
@@ -231,7 +231,7 @@ pub fn update_route(db_path: &str, id: i64, route: &RouteConfig) -> Result<()> {
             route.username,
             route.password,
             route.country_code,
-            route.swap_interval_hours.unwrap_or(24) as i64,
+            route.swap_interval_minutes.unwrap_or(1440) as i64,
             route.test_interval_minutes.unwrap_or(15) as i64,
             route.restart_trigger,
             id,

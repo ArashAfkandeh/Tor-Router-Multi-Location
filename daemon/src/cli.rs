@@ -31,7 +31,7 @@ struct RouteApiItem {
     #[serde(default)]
     password: Option<String>,
     country_code: String,
-    swap_interval_hours: u64,
+    swap_interval_minutes: u64,
     test_interval_minutes: u64,
     latency: String,
     #[serde(default)]
@@ -470,7 +470,7 @@ async fn create_route_cli(api_url: &str, session: Option<&str>) {
     print!("👉 Username (optional): "); io::stdout().flush().unwrap(); let mut username = String::new(); io::stdin().read_line(&mut username).unwrap(); let username = username.trim().to_string();
     print!("👉 Password (optional): "); io::stdout().flush().unwrap(); let mut password = String::new(); io::stdin().read_line(&mut password).unwrap(); let password = password.trim().to_string();
     print!("👉 Country code (e.g. us): "); io::stdout().flush().unwrap(); let mut country = String::new(); io::stdin().read_line(&mut country).unwrap(); let country = country.trim().to_string();
-    print!("👉 Swap interval hours (default 24): "); io::stdout().flush().unwrap(); let mut swap_s = String::new(); io::stdin().read_line(&mut swap_s).unwrap(); let swap = swap_s.trim().parse::<u64>().ok();
+    print!("👉 Swap interval minutes (default 1440): "); io::stdout().flush().unwrap(); let mut swap_s = String::new(); io::stdin().read_line(&mut swap_s).unwrap(); let swap = swap_s.trim().parse::<u64>().ok();
     print!("👉 Test interval minutes (default 15): "); io::stdout().flush().unwrap(); let mut test_s = String::new(); io::stdin().read_line(&mut test_s).unwrap(); let test = test_s.trim().parse::<u64>().ok();
 
     let payload = serde_json::json!({
@@ -480,7 +480,7 @@ async fn create_route_cli(api_url: &str, session: Option<&str>) {
         "username": if username.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(username) },
         "password": if password.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(password) },
         "country_code": country,
-        "swap_interval_hours": swap,
+        "swap_interval_minutes": swap,
         "test_interval_minutes": test,
     });
 
@@ -519,7 +519,7 @@ async fn edit_route_cli(api_url: &str, session: Option<&str>) {
     print!("Username ({}): ", ex.username.clone().unwrap_or_default()); io::stdout().flush().unwrap(); let mut username = String::new(); io::stdin().read_line(&mut username).unwrap(); let username = if username.trim().is_empty() { ex.username } else { Some(username.trim().to_string()) };
     print!("Password (hidden): "); io::stdout().flush().unwrap(); let mut password = String::new(); io::stdin().read_line(&mut password).unwrap(); let password = if password.trim().is_empty() { ex.password } else { Some(password.trim().to_string()) };
     print!("Country code ({}): ", ex.country_code); io::stdout().flush().unwrap(); let mut country = String::new(); io::stdin().read_line(&mut country).unwrap(); let country = if country.trim().is_empty() { ex.country_code } else { country.trim().to_string() };
-    print!("Swap interval hours ({}): ", ex.swap_interval_hours); io::stdout().flush().unwrap(); let mut swap_s = String::new(); io::stdin().read_line(&mut swap_s).unwrap(); let swap = if swap_s.trim().is_empty() { ex.swap_interval_hours } else { swap_s.trim().parse().unwrap_or(ex.swap_interval_hours) };
+    print!("Swap interval minutes ({}): ", ex.swap_interval_minutes); io::stdout().flush().unwrap(); let mut swap_s = String::new(); io::stdin().read_line(&mut swap_s).unwrap(); let swap = if swap_s.trim().is_empty() { ex.swap_interval_minutes } else { swap_s.trim().parse().unwrap_or(ex.swap_interval_minutes) };
     print!("Test interval minutes ({}): ", ex.test_interval_minutes); io::stdout().flush().unwrap(); let mut test_s = String::new(); io::stdin().read_line(&mut test_s).unwrap(); let test = if test_s.trim().is_empty() { ex.test_interval_minutes } else { test_s.trim().parse().unwrap_or(ex.test_interval_minutes) };
 
     let payload = serde_json::json!({
@@ -529,7 +529,7 @@ async fn edit_route_cli(api_url: &str, session: Option<&str>) {
         "username": username,
         "password": password,
         "country_code": country,
-        "swap_interval_hours": swap,
+        "swap_interval_minutes": swap,
         "test_interval_minutes": test,
     });
 

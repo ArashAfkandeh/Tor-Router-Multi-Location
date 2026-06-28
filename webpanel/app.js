@@ -35,7 +35,7 @@ const translations = {
         modal_route_port: "Input Port",
         modal_route_country: "Country Code",
         modal_route_interval: "Test Interval (Min)",
-        modal_route_swap: "Swap (Hrs)",
+        modal_route_swap: "Swap (Min)",
         modal_route_user: "Username (Opt)",
         modal_route_pass: "Password (Opt)",
         modal_btn_cancel: "Cancel",
@@ -97,7 +97,7 @@ const translations = {
         modal_route_port: "پورت ورودی",
         modal_route_country: "کد کشور",
         modal_route_interval: "فاصله زمانی تست (دقیقه)",
-        modal_route_swap: "تعویض IP (ساعت)",
+        modal_route_swap: "تعویض IP (دقیقه)",
         modal_route_user: "نام کاربری (اختیاری)",
         modal_route_pass: "رمز عبور (اختیاری)",
         modal_btn_cancel: "انصراف",
@@ -849,7 +849,7 @@ function openRouteModal(id = null) {
                 el.routeInputs.port.value = node.input_port;
                 el.routeInputs.country.value = node.country_code;
                 el.routeInputs.interval.value = node.test_interval_minutes || 10;
-                el.routeInputs.swap.value = node.swap_interval_hours || 24;
+                el.routeInputs.swap.value = node.swap_interval_minutes || 1440;
                 el.routeInputs.user.value = node.username || '';
                 el.routeInputs.pass.value = node.password || '';
             }
@@ -884,7 +884,7 @@ async function handleRouteSave(e) {
         input_port: parseInt(el.routeInputs.port.value, 10),
         country_code: el.routeInputs.country.value,
         test_interval_minutes: parseInt(el.routeInputs.interval.value, 10) || 10,
-        swap_interval_hours: parseInt(el.routeInputs.swap.value, 10) || 24,
+        swap_interval_minutes: parseInt(el.routeInputs.swap.value, 10) || 1440,
         username: el.routeInputs.user.value || null,
         password: el.routeInputs.pass.value || null
     };

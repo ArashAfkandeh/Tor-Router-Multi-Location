@@ -397,6 +397,12 @@ if $BUILD_DAEMON; then
 
     cp "$CARGO_OUT/$BIN_NAME" "$DIST_DIR/$OUT_NAME"
     chmod +x "$DIST_DIR/$OUT_NAME"
+    
+    # Strip binary to reduce size
+    if command -v strip &>/dev/null; then
+        strip "$DIST_DIR/$OUT_NAME"
+    fi
+    
     log_ok "→ dist/$OUT_NAME  ($(du -sh "$DIST_DIR/$OUT_NAME" | cut -f1))"
 fi
 

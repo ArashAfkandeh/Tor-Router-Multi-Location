@@ -260,7 +260,7 @@ struct RouteStatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     password: Option<String>,
     country_code: String,
-    swap_interval_hours: u64,
+    swap_interval_minutes: u64,
     test_interval_minutes: u64,
     latency: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -307,7 +307,7 @@ fn node_to_response(cfg: &RouteConfig, node: Option<&Arc<ActiveNode>>) -> RouteS
         username:             cfg.username.clone(),
         password:             cfg.password.clone(),
         country_code:         cfg.country_code.to_uppercase(),
-        swap_interval_hours:  cfg.swap_interval_hours.unwrap_or(24),
+        swap_interval_minutes: cfg.swap_interval_minutes.unwrap_or(1440),
         test_interval_minutes:cfg.test_interval_minutes.unwrap_or(15),
         latency:              latency_to_string(lat),
         tor_ip,
@@ -344,7 +344,7 @@ struct RouteBody {
     username: Option<String>,
     password: Option<String>,
     country_code: String,
-    swap_interval_hours: Option<u64>,
+    swap_interval_minutes: Option<u64>,
     test_interval_minutes: Option<u64>,
 }
 
@@ -358,7 +358,7 @@ impl From<RouteBody> for RouteConfig {
             username: b.username.filter(|s| !s.is_empty()),
             password: b.password.filter(|s| !s.is_empty()),
             country_code: b.country_code.to_lowercase(),
-            swap_interval_hours: Some(b.swap_interval_hours.unwrap_or(24)),
+            swap_interval_minutes: Some(b.swap_interval_minutes.unwrap_or(1440)),
             test_interval_minutes: Some(b.test_interval_minutes.unwrap_or(15)),
             restart_trigger: None,
             tor_ip: None,
@@ -606,50 +606,37 @@ async fn get_countries(
     State(_state): State<AppState>,
     _headers: HeaderMap,
 ) -> impl IntoResponse {
-    let cache_path = std::env::temp_dir().join("tor_countries_cache.json");
-    
-    // Check if cache exists and is less than 24 hours old
-    let mut use_cache = false;
-    if let Ok(metadata) = std::fs::metadata(&cache_path) {
-        if let Ok(modified) = metadata.modified() {
-            if let Ok(elapsed) = modified.elapsed() {
-                if elapsed.as_secs() < 24 * 60 * 60 {
-                    use_cache = true;
-                }
-            }
-        }
-    }
-    
-    if use_cache {
-        if let Ok(content) = std::fs::read_to_string(&cache_path) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                return Json(json).into_response();
-            }
-        }
-    }
-    
-    // Fetch from API
+    let client = reqwest::Client::new();
     let url = "https://onionoo.torproject.org/details?running=true&flag=Exit";
-    match reqwest::get(url).await {
-        Ok(res) => {
-            if let Ok(text) = res.text().await {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                    let _ = std::fs::write(&cache_path, &text);
-                    return Json(json).into_response();
+
+    #[derive(serde::Deserialize, serde::Serialize)]
+    struct OnionooResponse {
+        relays: Vec<OnionooRelay>,
+    }
+    
+    #[derive(serde::Deserialize, serde::Serialize)]
+    struct OnionooRelay {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        country: Option<String>,
+    }
+
+    if let Ok(res) = client.get(url).send().await {
+        if let Ok(text) = res.text().await {
+            if let Ok(mut parsed) = serde_json::from_str::<OnionooResponse>(&text) {
+                // Keep only relays that have a country code to save space
+                parsed.relays.retain(|r| r.country.is_some());
+                if let Ok(minified) = serde_json::to_string(&parsed) {
+                    return (
+                        axum::http::StatusCode::OK,
+                        [(axum::http::header::CONTENT_TYPE, "application/json")],
+                        minified,
+                    ).into_response();
                 }
             }
         }
-        Err(_) => {}
     }
     
-    // If fetch failed, try to return stale cache
-    if let Ok(content) = std::fs::read_to_string(&cache_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            return Json(json).into_response();
-        }
-    }
-    
-    (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch countries").into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch countries from Tor Project").into_response()
 }
 
 async fn get_logs(

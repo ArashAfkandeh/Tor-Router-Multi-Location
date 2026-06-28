@@ -233,7 +233,7 @@ pub fn spawn_route_worker(
                 let r = route_arc.read();
                 (
                     r.name.clone(),
-                    r.swap_interval_hours.unwrap_or(24) as u64,
+                    r.swap_interval_minutes.unwrap_or(1440) as u64,
                     r.test_interval_minutes.unwrap_or(15) as u64,
                     r.country_code.clone(),
                 )
