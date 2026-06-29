@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ToRouter Panel</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
         html { opacity: 0; transition: opacity 0.3s ease; }
         html.loaded { opacity: 1; }
@@ -99,14 +100,14 @@
                         <p class="hidden sm:block text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Support developer on Telegram and GitHub</p>
                     </div>
                 </div>
-                <div class="hidden md:flex items-center gap-2">
-                    <img src="https://github.com/ArashAfkandeh.png?size=80" alt="Arash Afkandeh" class="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm object-cover">
-                    <a href="tg://resolve?domain=ArashAfkandeh" class="inline-flex items-center gap-2 rounded-full bg-brand-600 text-white text-xs font-semibold px-3 py-2 hover:bg-brand-500 transition" title="Contact Developer on Telegram">
-                        <span>Telegram</span>
+                <div class="hidden md:flex items-center gap-3">
+                    <a href="https://github.com/ArashAfkandeh/ToRouter-Multi-Location" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all shadow-sm pl-2.5 pr-3 py-1.5" title="View Source on GitHub">
+                        <i class="fa-brands fa-github text-base"></i>
+                        <span class="text-xs font-semibold">Star<span id="github-stars-count" class="ml-1 opacity-80"></span></span>
                     </a>
-                    <a href="https://github.com/ArashAfkandeh/ToRouter-Multi-Location" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3 py-2 hover:bg-slate-200 dark:hover:bg-slate-800 transition" title="Star the project on GitHub">
-                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.16 6.84 9.49.5.09.68-.22.68-.48 0-.24-.01-.87-.01-1.71-2.78.61-3.37-1.34-3.37-1.34-.45-1.16-1.1-1.47-1.1-1.47-.9-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.98 1.03-2.67-.1-.26-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0112 6.8c.85.004 1.71.11 2.51.32 1.9-1.29 2.74-1.02 2.74-1.02.55 1.39.2 2.41.1 2.67.64.69 1.03 1.58 1.03 2.67 0 3.85-2.34 4.69-4.57 4.95.36.31.69.92.69 1.85 0 1.33-.01 2.4-.01 2.72 0 .27.18.58.69.48A10.009 10.009 0 0022 12c0-5.52-4.48-10-10-10z"/></svg>
-                        <span>Star</span>
+                    <a href="tg://resolve?domain=ArashAfkandeh" class="inline-flex items-center gap-2 rounded-full border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/50 hover:text-sky-700 dark:hover:text-sky-300 transition-all shadow-sm pl-2.5 pr-3 py-1.5" title="Contact Developer on Telegram">
+                        <i class="fa-brands fa-telegram text-base"></i>
+                        <span class="text-xs font-semibold">Support</span>
                     </a>
                 </div>
                 <div class="flex items-center gap-1 sm:gap-3 overflow-x-auto no-scrollbar">
@@ -131,7 +132,7 @@
                 </div>
             </nav>
 
-            <main class="flex-1 w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+            <main class="flex-1 w-full mx-auto p-4 sm:p-6 lg:p-8">
                 <!-- Action Bar -->
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                     <div>
@@ -145,7 +146,7 @@
                         </div>
                         <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
                         <div class="flex flex-nowrap overflow-x-auto no-scrollbar gap-2 w-full sm:w-auto pb-1 sm:pb-0 shrink-0">
-                            <a href="Countries.html" target="_blank" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-1.5">
+                            <a id="link-countries" href="Countries.html" target="_blank" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-1.5">
                                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                 <span data-i18n="btn_countries" class="whitespace-nowrap">Tor Countries</span>
                             </a>
@@ -162,7 +163,7 @@
                 </div>
 
                 <!-- Nodes Grid -->
-                <div id="nodes-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                <div id="nodes-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 1.25rem;">
                     <!-- Populated via JS -->
                 </div>
             </main>
@@ -177,52 +178,52 @@
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <div class="p-6 overflow-y-auto no-scrollbar">
-                    <form id="form-route" class="space-y-5">
+                <div class="p-4 overflow-y-auto no-scrollbar">
+                    <form id="form-route" class="space-y-3">
                         <input type="hidden" id="route-id">
-                        <div>
-                            <label data-i18n="modal_route_name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
-                            <input type="text" id="route-name" placeholder="e.g. node-1" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 focus:border-brand-500 outline-none">
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label data-i18n="modal_route_bind" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Bind Address</label>
-                                <input type="text" id="route-bind" placeholder="127.0.0.1" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                <label data-i18n="modal_route_name" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
+                                <input type="text" id="route-name" placeholder="e.g. node-1" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                             </div>
                             <div>
-                                <label data-i18n="modal_route_port" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Input Port</label>
-                                <input type="number" id="route-port" placeholder="9050" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                <label data-i18n="modal_route_country" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Country Code</label>
+                                <input type="text" id="route-country" placeholder="US, DE" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none uppercase" maxlength="2">
                             </div>
                         </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label data-i18n="modal_route_country" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Country Code</label>
-                                <input type="text" id="route-country" placeholder="US, DE" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none uppercase" maxlength="2">
+                                <label data-i18n="modal_route_bind" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Bind Address</label>
+                                <input type="text" id="route-bind" placeholder="127.0.0.1" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                             </div>
                             <div>
-                                <label data-i18n="modal_route_interval" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Test Interval (Min)</label>
-                                <input type="number" id="route-interval" placeholder="10" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label data-i18n="modal_route_swap" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Swap (Min)</label>
-                                <input type="number" id="route-swap" placeholder="1440" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                <label data-i18n="modal_route_port" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Input Port</label>
+                                <input type="number" id="route-port" placeholder="9050" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                             </div>
                         </div>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label data-i18n="modal_route_user" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username (Opt)</label>
-                                <input type="text" id="route-user" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                <label data-i18n="modal_route_interval" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Test Interval (Min)</label>
+                                <input type="number" id="route-interval" placeholder="10" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                             </div>
                             <div>
-                                <label data-i18n="modal_route_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password (Opt)</label>
-                                <input type="password" id="route-pass" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                <label data-i18n="modal_route_swap" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Swap Interval (Min)</label>
+                                <input type="number" id="route-swap" placeholder="60" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                             </div>
                         </div>
-                        <div class="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-                            <button data-i18n="modal_btn_cancel" type="button" class="modal-close px-5 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancel</button>
-                            <button id="modal-route-btn-save" data-i18n="modal_route_btn_save" type="submit" class="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none">Save Node</button>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label data-i18n="modal_route_user" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Username (Opt)</label>
+                                <input type="text" id="route-user" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label data-i18n="modal_route_pass" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Password (Opt)</label>
+                                <input type="password" id="route-pass" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                            </div>
+                        </div>
+                        <div class="mt-4 flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                            <button data-i18n="modal_btn_cancel" type="button" class="modal-close px-4 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancel</button>
+                            <button id="modal-route-btn-save" data-i18n="modal_route_btn_save" type="submit" class="px-4 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none">Save Node</button>
                         </div>
                     </form>
                 </div>
@@ -250,6 +251,16 @@
                             <div>
                                 <label data-i18n="modal_set_port" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Port</label>
                                 <input type="number" id="set-web-port" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Log Level</label>
+                                <select id="set-log-level" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
+                                    <option value="trace">Trace (Very Verbose)</option>
+                                    <option value="debug">Debug (Verbose)</option>
+                                    <option value="info">Info (Normal)</option>
+                                    <option value="warn">Warning (Quiet)</option>
+                                    <option value="error">Error (Very Quiet)</option>
+                                </select>
                             </div>
                         </div>
 

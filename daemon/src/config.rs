@@ -55,6 +55,7 @@ pub struct Settings {
     pub custom_cert_path: Option<String>,
     pub custom_key_path:  Option<String>,
     pub web_base_path:    String,
+    pub log_level:        String,
 }
 
 impl Default for Settings {
@@ -70,6 +71,7 @@ impl Default for Settings {
             custom_cert_path: None,
             custom_key_path:  None,
             web_base_path:    "".to_string(),
+            log_level:        "info".to_string(),
         }
     }
 }
@@ -86,6 +88,7 @@ pub struct SettingsUpdate {
     pub custom_cert_path: Option<String>,
     pub custom_key_path:  Option<String>,
     pub web_base_path:    Option<String>,
+    pub log_level:        Option<String>,
 }
 
 // ─── Bootstrap schema ────────────────────────────────────────────────────────
@@ -278,6 +281,7 @@ pub fn load_settings(db_path: &str) -> Result<Settings> {
             "custom_cert_path" => settings.custom_cert_path = if row.1.is_empty() { None } else { Some(row.1) },
             "custom_key_path"  => settings.custom_key_path  = if row.1.is_empty() { None } else { Some(row.1) },
             "web_base_path"    => settings.web_base_path    = row.1,
+            "log_level"        => settings.log_level        = if row.1.is_empty() { "info".to_string() } else { row.1 },
             _ => {}
         }
     }
@@ -297,6 +301,7 @@ pub fn save_settings(db_path: &str, s: &Settings) -> Result<()> {
         ("custom_cert_path", s.custom_cert_path.clone().unwrap_or_default()),
         ("custom_key_path",  s.custom_key_path.clone().unwrap_or_default()),
         ("web_base_path",    s.web_base_path.clone()),
+        ("log_level",        s.log_level.clone()),
     ];
     for (k, v) in pairs {
         conn.execute(

@@ -17,8 +17,26 @@ pub const NOT_CONNECTED: Duration = Duration::from_secs(3596400);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 pub const WEB_RESTART_SIGNAL: i64 = -1;
 
+use tracing_subscriber::{EnvFilter, Registry};
+use tracing_subscriber::reload::Handle;
+
+pub type LogHandle = Handle<EnvFilter, Registry>;
+
 lazy_static::lazy_static! {
     pub static ref APP_LOGS: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    pub static ref LOG_RELOAD_HANDLE: Arc<RwLock<Option<LogHandle>>> = Arc::new(RwLock::new(None));
+}
+
+pub fn update_log_level(level: &str) {
+    if let Some(handle) = LOG_RELOAD_HANDLE.read().as_ref() {
+        let filter_str = format!("tor_router={},hyper=info,reqwest=info,h2=info", level);
+        let new_filter = EnvFilter::new(&filter_str);
+        if let Err(e) = handle.reload(new_filter) {
+            tracing::error!("Failed to reload log level: {}", e);
+        } else {
+            tracing::info!("Log level dynamically updated to: {}", level);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -160,6 +178,9 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                                 let _ = h.await;
                             }
                             if let Ok(s) = crate::config::load_settings(&abs_db_str) {
+                                // Update log level dynamically
+                                crate::daemon::update_log_level(&s.log_level);
+                                
                                 let bind = format!("{}:{}", s.web_bind_address, s.web_panel_port);
                                 let bind_for_spawn = bind.clone();
                                 let tx = restart_tx.clone();

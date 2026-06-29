@@ -141,17 +141,24 @@ async fn main() {
 
     if run_mode || web_dir.is_some() {
         // Initialize logging
+        let mut log_level = env::var("RUST_LOG").unwrap_or_else(|_| settings.log_level.clone());
+        if log_level.is_empty() {
+            log_level = "info".to_string();
+        }
         let filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("tor_router=debug"))
-            .add_directive("hyper=info".parse().unwrap())
-            .add_directive("reqwest=info".parse().unwrap())
-            .add_directive("h2=info".parse().unwrap());
+            .unwrap_or_else(|_| EnvFilter::new(format!("tor_router={},hyper=info,reqwest=info,h2=info", log_level)));
             
+        let (filter_layer, reload_handle) = tracing_subscriber::reload::Layer::new(filter);
+        
+        *crate::daemon::LOG_RELOAD_HANDLE.write() = Some(reload_handle);
+
         let logger = crate::daemon::AppLogger::new();
 
-        tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .with_writer(logger)
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        use tracing_subscriber::Layer;
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_writer(logger).with_filter(filter_layer))
             .init();
             
         run_daemon(&db_path, &api_bind, web_dir).await;

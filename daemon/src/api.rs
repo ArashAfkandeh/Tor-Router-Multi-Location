@@ -65,21 +65,6 @@ pub async fn start_web_server(
         .route("/probe",                   get(legacy_probe))
         .with_state(state.clone());
 
-    // ── Static files (web panel) ────────────────────────────────────────────
-    let web_router = if let Some(ref dir) = web_dir {
-        info!("Serving web panel from directory: {}", dir);
-        let serve = ServeDir::new(&dir)
-            .fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
-        Router::new().fallback_service(serve)
-    } else {
-        Router::new().fallback(|| async {
-            (
-                StatusCode::NOT_FOUND,
-                "Web panel not configured. Start the daemon with --web-dir <path/to/dist>",
-            )
-        })
-    };
-
     let settings = config::load_settings(&db_path).unwrap_or_default();
     
     let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
@@ -88,15 +73,27 @@ pub async fn start_web_server(
     }
     
     let app = if base_path.is_empty() || base_path == "/" {
-        Router::new().merge(api_routes).merge(web_router)
+        let mut app = Router::new().merge(api_routes);
+        if let Some(ref dir) = web_dir {
+            let serve = ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
+            app = app.fallback_service(serve);
+        } else {
+            app = app.fallback(|| async { (StatusCode::NOT_FOUND, "Web panel not configured. Start the daemon with --web-dir <path/to/dist>") });
+        }
+        app
     } else {
-        Router::new()
-            .nest(&base_path, Router::new().merge(api_routes).merge(web_router))
-            // Redirect root to base_path/
-            .route("/", axum::routing::get(move || {
-                let bp = format!("{}/", base_path);
-                async move { axum::response::Redirect::temporary(&bp) }
-            }))
+        let mut app = Router::new().nest(&base_path, api_routes);
+        if let Some(ref dir) = web_dir {
+            let serve = ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
+            app = app.nest_service(&base_path, serve);
+        } else {
+            let not_found = axum::routing::any(|| async { (StatusCode::NOT_FOUND, "Web panel not configured.") });
+            app = app.nest_service(&base_path, not_found);
+        }
+        app.route("/", axum::routing::get(move || {
+            let bp = format!("{}/", base_path);
+            async move { axum::response::Redirect::temporary(&bp) }
+        }))
     };
 
     let addr: std::net::SocketAddr = match bind_addr.parse() {
@@ -481,6 +478,7 @@ async fn get_settings_handler(
             "custom_cert_path": s.custom_cert_path,
             "custom_key_path":  s.custom_key_path,
             "web_base_path":    s.web_base_path,
+            "log_level":        s.log_level,
             "admin_username":   s.admin_username,
             "admin_password":   s.admin_password,
         })).into_response(),
@@ -502,6 +500,7 @@ async fn save_settings_handler(
     if let Some(pw) = update.admin_password  { settings.admin_password   = pw; }
     if let Some(uc) = update.use_custom_cert { settings.use_custom_cert  = uc; }
     if let Some(wb) = update.web_base_path   { settings.web_base_path    = wb; }
+    if let Some(ll) = update.log_level       { settings.log_level        = ll; }
     settings.custom_cert_path = update.custom_cert_path;
     settings.custom_key_path  = update.custom_key_path;
     settings.domain     = update.domain;

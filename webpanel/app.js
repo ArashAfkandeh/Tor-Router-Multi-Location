@@ -30,12 +30,13 @@ const translations = {
         btn_add_node: "Add Node",
         btn_countries: "Tor Countries",
         modal_route_title: "Create Node",
+        modal_route_edit: "Edit Node",
         modal_route_name: "Name",
         modal_route_bind: "Bind Address",
         modal_route_port: "Input Port",
         modal_route_country: "Country Code",
         modal_route_interval: "Test Interval (Min)",
-        modal_route_swap: "Swap (Min)",
+        modal_route_swap: "Swap Interval (Min)",
         modal_route_user: "Username (Opt)",
         modal_route_pass: "Password (Opt)",
         modal_btn_cancel: "Cancel",
@@ -92,6 +93,7 @@ const translations = {
         btn_add_node: "افزودن نود",
         btn_countries: "کشورهای Tor",
         modal_route_title: "ایجاد نود",
+        modal_route_edit: "ویرایش نود",
         modal_route_name: "نام",
         modal_route_bind: "آدرس اتصال",
         modal_route_port: "پورت ورودی",
@@ -207,6 +209,7 @@ const el = {
     settingsInputs: {
         webBind: document.getElementById('set-web-bind'),
         webPort: document.getElementById('set-web-port'),
+        logLevel: document.getElementById('set-log-level'),
         adminUser: document.getElementById('set-admin-user'),
         adminPass: document.getElementById('set-admin-pass'),
         webBase: document.getElementById('set-web-base'),
@@ -236,11 +239,25 @@ const el = {
 el.btnThemeLogin?.addEventListener('click', toggleTheme);
 el.btnLangLogin?.addEventListener('click', toggleLang);
 
+async function fetchGithubStars() {
+    try {
+        const response = await fetch('https://api.github.com/repos/ArashAfkandeh/ToRouter-Multi-Location');
+        if (response.ok) {
+            const data = await response.json();
+            const el = document.getElementById('github-stars-count');
+            if (el) el.textContent = '(' + data.stargazers_count + ')';
+        }
+    } catch (e) {
+        console.error('Failed to fetch github stars', e);
+    }
+}
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
     console.debug('[App] DOMContentLoaded triggered.');
     initTheme();
     initLang();
+    fetchGithubStars();
 
     // Check initial auth state by trying to fetch routes
     console.debug('[App] Checking auth status...');
@@ -302,6 +319,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // --- Theme ---
+function updateCountriesLink() {
+    const link = document.getElementById('link-countries');
+    if (link) {
+        const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+        link.href = `Countries.html?lang=${currentLang}&theme=${theme}`;
+    }
+}
+
 function initTheme() {
     const stored = localStorage.getItem('theme');
     if (stored) {
@@ -311,11 +336,13 @@ function initTheme() {
         // Default to dark when no preference is stored
         document.documentElement.classList.add('dark');
     }
+    updateCountriesLink();
 }
 
 function toggleTheme() {
     const isDark = document.documentElement.classList.toggle('dark');
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    updateCountriesLink();
 }
 
 // --- i18n Functions ---
@@ -329,6 +356,7 @@ function initLang() {
         document.body.setAttribute('dir', 'ltr');
     }
     applyTranslations();
+    updateCountriesLink();
 }
 
 function toggleLang() {
@@ -560,20 +588,20 @@ function renderMetrics(data) {
     }
 
     el.metricsContainer.innerHTML = `
-        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
-            <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-            <span class="label text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">${t_total}</span>
-            <span class="value text-xs font-bold text-slate-900 dark:text-white">${total}</span>
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-full border border-slate-200 dark:border-slate-700/80 shadow-sm transition-all hover:bg-slate-200 dark:hover:bg-slate-700/60">
+            <div class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
+            <span class="label text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">${t_total}</span>
+            <span class="value text-sm font-bold text-slate-900 dark:text-white ml-1">${total}</span>
         </div>
-        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
-            <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-            <span class="label text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">${t('metric_healthy')}</span>
-            <span class="value text-xs font-bold text-emerald-600 dark:text-emerald-400">${healthy}</span>
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/50 dark:bg-emerald-900/20 rounded-full border border-emerald-200/60 dark:border-emerald-800/60 shadow-sm transition-all hover:bg-emerald-100/50 dark:hover:bg-emerald-900/40">
+            <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+            <span class="label text-xs font-semibold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">${t('metric_healthy')}</span>
+            <span class="value text-sm font-bold text-emerald-800 dark:text-emerald-300 ml-1">${healthy}</span>
         </div>
-        <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
-            <div class="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-            <span class="label text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">${t('metric_error')}</span>
-            <span class="value text-xs font-bold text-red-600 dark:text-red-400">${error}</span>
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-red-50/50 dark:bg-red-900/20 rounded-full border border-red-200/60 dark:border-red-800/60 shadow-sm transition-all hover:bg-red-100/50 dark:hover:bg-red-900/40">
+            <div class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+            <span class="label text-xs font-semibold uppercase tracking-widest text-red-700 dark:text-red-400">${t('metric_error')}</span>
+            <span class="value text-sm font-bold text-red-800 dark:text-red-300 ml-1">${error}</span>
         </div>
     `;
 }
@@ -657,7 +685,7 @@ function createNodeCard(node) {
                     </div>
                     <div class="flex justify-between items-center py-1">
                         <span class="text-slate-500 dark:text-slate-400 font-medium">${t('card_auth')}</span>
-                        <span data-el="auth-req" class="font-mono text-slate-900 dark:text-white">${(node.username && node.password) ? '<span class="auth-emoji locked">🔒</span>' : '<span class="auth-emoji unlocked">🔓</span>'}</span>
+                        <span data-el="auth-req" class="font-mono text-slate-900 dark:text-white">${(node.username && node.password) ? '<i class="fa-solid fa-lock" style="color: rgb(0, 0, 0);"></i>' : '<i class="fa-solid fa-lock-open" style="color: rgb(190, 198, 212);"></i>'}</span>
                     </div>
                 </div>
             </div>
@@ -748,7 +776,7 @@ function updateNodeCard(node) {
 
     const authEl = card.querySelector('[data-el="auth-req"]');
     if (authEl) {
-        const authHtml = (node.username && node.password) ? '<span class="auth-emoji locked">🔒</span>' : '<span class="auth-emoji unlocked">🔓</span>';
+        const authHtml = (node.username && node.password) ? '<i class="fa-solid fa-lock" style="color: rgb(0, 0, 0);"></i>' : '<i class="fa-solid fa-lock-open" style="color: rgb(190, 198, 212);"></i>';
         if (authEl.innerHTML !== authHtml) authEl.innerHTML = authHtml;
     }
 }
@@ -846,7 +874,7 @@ function openRouteModal(id = null) {
                 el.routeInputs.port.value = node.input_port;
                 el.routeInputs.country.value = node.country_code;
                 el.routeInputs.interval.value = node.test_interval_minutes || 10;
-                el.routeInputs.swap.value = node.swap_interval_minutes || 1440;
+                el.routeInputs.swap.value = node.swap_interval_minutes || 60;
                 el.routeInputs.user.value = node.username || '';
                 el.routeInputs.pass.value = node.password || '';
             }
@@ -881,7 +909,7 @@ async function handleRouteSave(e) {
         input_port: parseInt(el.routeInputs.port.value, 10),
         country_code: el.routeInputs.country.value,
         test_interval_minutes: parseInt(el.routeInputs.interval.value, 10) || 10,
-        swap_interval_minutes: parseInt(el.routeInputs.swap.value, 10) || 1440,
+        swap_interval_minutes: parseInt(el.routeInputs.swap.value, 10) || 60,
         username: el.routeInputs.user.value || null,
         password: el.routeInputs.pass.value || null
     };
@@ -920,6 +948,7 @@ async function openSettingsModal() {
     const data = res.data;
     el.settingsInputs.webBind.value = data.web_bind_address || '';
     el.settingsInputs.webPort.value = data.web_panel_port || '';
+    el.settingsInputs.logLevel.value = data.log_level || 'info';
     el.settingsInputs.adminUser.value = data.admin_username || '';
     el.settingsInputs.adminPass.value = '';
     el.settingsInputs.webBase.value = data.web_base_path || '';
@@ -980,6 +1009,7 @@ async function handleSettingsSave(e) {
         payload.web_panel_port = p;
         payload.api_port = p; // enforce single shared port
     }
+    if (el.settingsInputs.logLevel.value) payload.log_level = el.settingsInputs.logLevel.value;
     if (el.settingsInputs.adminUser.value) payload.admin_username = el.settingsInputs.adminUser.value;
     if (el.settingsInputs.adminPass.value) payload.admin_password = el.settingsInputs.adminPass.value;
     
