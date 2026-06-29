@@ -153,14 +153,16 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
 
     let api_nodes = global_nodes.clone();
     let db_for_api = abs_db_str.clone();
+    let mut server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
     let mut web_handle: Option<tokio::task::JoinHandle<()>> = {
         let bind = api_bind.to_string();
         let tx = restart_tx.clone();
         let api_nodes = api_nodes.clone();
         let db_for_api = db_for_api.clone();
         let web_dir = web_dir.clone();
+        let h = server_handle.clone();
         Some(tokio::spawn(async move {
-            start_web_server(bind, tx, api_nodes, db_for_api, web_dir).await;
+            start_web_server(bind, tx, api_nodes, db_for_api, web_dir, h).await;
         }))
     };
 
@@ -173,8 +175,8 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                     if let Some(id) = route_id {
                         if id == -1 {
                             info!("🔁 Web server restart requested");
+                            server_handle.shutdown();
                             if let Some(h) = web_handle.take() {
-                                h.abort();
                                 let _ = h.await;
                             }
                             if let Ok(s) = crate::config::load_settings(&abs_db_str) {
@@ -187,8 +189,10 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                                 let api_nodes = global_nodes.clone();
                                 let db_for_api = abs_db_str.clone();
                                 let web_dir = web_dir.clone();
+                                server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
+                                let h = server_handle.clone();
                                 web_handle = Some(tokio::spawn(async move {
-                                    start_web_server(bind_for_spawn, tx, api_nodes, db_for_api, web_dir).await;
+                                    start_web_server(bind_for_spawn, tx, api_nodes, db_for_api, web_dir, h).await;
                                 }));
                                 info!("✅ Web server respawned on {}", bind);
                             } else {

@@ -12,7 +12,6 @@ use axum::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tower_http::services::ServeDir;
 use tracing::{info, error};
 
 use crate::config::{self, RouteConfig, SettingsUpdate};
@@ -38,6 +37,7 @@ pub async fn start_web_server(
     nodes: SharedNodes,
     db_path: String,
     web_dir: Option<String>,
+    server_handle: axum_server::Handle<std::net::SocketAddr>,
 ) {
     let state = AppState {
         restart_tx,
@@ -75,21 +75,24 @@ pub async fn start_web_server(
     let app = if base_path.is_empty() || base_path == "/" {
         let mut app = Router::new().merge(api_routes);
         if let Some(ref dir) = web_dir {
-            let serve = ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
+            let serve = tower_http::services::ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
             app = app.fallback_service(serve);
         } else {
-            app = app.fallback(|| async { (StatusCode::NOT_FOUND, "Web panel not configured. Start the daemon with --web-dir <path/to/dist>") });
+            app = app.fallback(|| async { (axum::http::StatusCode::NOT_FOUND, "Web panel not configured. Start the daemon with --web-dir <path/to/dist>") });
         }
         app
     } else {
-        let mut app = Router::new().nest(&base_path, api_routes);
+        let mut nested = Router::new().merge(api_routes);
         if let Some(ref dir) = web_dir {
-            let serve = ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
-            app = app.nest_service(&base_path, serve);
+            let serve = tower_http::services::ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(format!("{}/index.html", dir)));
+            nested = nested.fallback_service(serve);
         } else {
-            let not_found = axum::routing::any(|| async { (StatusCode::NOT_FOUND, "Web panel not configured.") });
-            app = app.nest_service(&base_path, not_found);
+            let not_found = axum::routing::any(|| async { (axum::http::StatusCode::NOT_FOUND, "Web panel not configured.") });
+            nested = nested.fallback_service(not_found);
         }
+        
+        let app = Router::new().nest(&base_path, nested);
+        
         app.route("/", axum::routing::get(move || {
             let bp = format!("{}/", base_path);
             async move { axum::response::Redirect::temporary(&bp) }
@@ -108,6 +111,7 @@ pub async fn start_web_server(
             match tls_config {
                 Ok(config) => {
                     if let Err(e) = axum_server::bind_rustls(addr, config)
+                        .handle(server_handle.clone())
                         .serve(app.into_make_service())
                         .await
                     {
@@ -153,10 +157,12 @@ pub async fn start_web_server(
             // Spawn ACME Challenge server on port 443
             let mut addr_443 = addr;
             addr_443.set_port(443);
+            let handle_443 = server_handle.clone();
             tokio::spawn(async move {
                 tracing::info!("🔒 ACME TLS-ALPN-01 listening on {}", addr_443);
                 let empty_app = axum::Router::new().route("/", axum::routing::get(|| async { "ACME Challenge Server" }));
                 if let Err(e) = axum_server::bind(addr_443)
+                    .handle(handle_443)
                     .acceptor(acceptor_443)
                     .serve(empty_app.into_make_service())
                     .await
@@ -166,6 +172,7 @@ pub async fn start_web_server(
             });
 
             if let Err(e) = axum_server::bind(addr)
+                .handle(server_handle.clone())
                 .acceptor(acceptor_panel)
                 .serve(app.into_make_service())
                 .await
@@ -179,7 +186,7 @@ pub async fn start_web_server(
     if web_dir.is_some() {
         info!("🌐 Web panel listening on http://{}", addr);
     }
-    if let Err(e) = axum_server::bind(addr).serve(app.into_make_service()).await {
+    if let Err(e) = axum_server::bind(addr).handle(server_handle).serve(app.into_make_service()).await {
         error!("❌ Web server error: {}", e);
     }
 }
@@ -508,12 +515,14 @@ async fn save_settings_handler(
         Ok(_) => {
             // Signal run_daemon to only restart the web server (do not stop Tor routes)
             let _ = state.restart_tx.send(crate::daemon::WEB_RESTART_SIGNAL).await;
-            Json(serde_json::json!({
+            let mut response = Json(serde_json::json!({
                 "ok": true,
                 "restarting": true,
                 "web_panel_port": settings.web_panel_port,
                 "web_bind_address": settings.web_bind_address
-            })).into_response()
+            })).into_response();
+            response.headers_mut().insert(axum::http::header::CONNECTION, axum::http::HeaderValue::from_static("close"));
+            response
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
