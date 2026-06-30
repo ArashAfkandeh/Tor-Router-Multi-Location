@@ -422,30 +422,21 @@ if $BUILD_WEB; then
         
         if [[ -f "$WEB_DIR/package.json" ]]; then
             # Install dependencies quietly
-            (cd "$WEB_DIR" && { npm ci  || npm install ; })
+            (cd "$WEB_DIR" && { npm ci || npm install; })
             
-            # Update caniuse-lite to remove warning
-            (cd "$WEB_DIR" && npx --yes update-browserslist-db@latest  || true)
-            
-            # Build CSS quietly
-            (cd "$WEB_DIR" && npm run build:css )
-            log_ok "Tailwind CSS compiled."
+            # Build using Vite
+            (cd "$WEB_DIR" && npm run build)
+            log_ok "Vite built the web panel."
         else
-            log_warn "webpanel/package.json not found — skipping CSS build."
+            log_warn "webpanel/package.json not found — skipping build."
         fi
 
         log_step "Copying web panel files..."
         check_tool rsync
         rm -rf "$DIST_DIR/web"
         mkdir -p "$DIST_DIR/web"
-        rsync -a \
-            --exclude 'node_modules' \
-            --exclude 'src' \
-            --exclude 'package.json' \
-            --exclude 'package-lock.json' \
-            --exclude 'tailwind.config.js' \
-            --exclude 'postcss.config.js' \
-            "$WEB_DIR/" "$DIST_DIR/web/" 
+        # Copy the contents of Vite's dist folder
+        rsync -a "$WEB_DIR/dist/" "$DIST_DIR/web/" 
         log_ok "→ dist/web/"
     fi
 fi
@@ -454,6 +445,11 @@ fi
 #  Phase 3 — Helper Files
 # ══════════════════════════════════════════════════════════════════════════════
 log_section "Phase 3 — Helper Files"
+
+log_step "Copying assets..."
+rm -rf "$DIST_DIR/assets"
+cp -r "$SCRIPT_DIR/assets" "$DIST_DIR/assets"
+log_ok "→ dist/assets/"
 
 BIN_FINAL="ToRouter"
 [[ "$TARGET" == *"windows"* ]] && BIN_FINAL="${BIN_FINAL}.exe"

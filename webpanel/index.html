@@ -1,60 +1,31 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-50 dark:bg-slate-900">
+<html lang="en" class="h-full bg-slate-50 dark:bg-slate-900" x-data :class="$store.app.theme" :dir="$store.app.lang === 'fa' ? 'rtl' : 'ltr'">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ToRouter Panel</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <style>
-        html { opacity: 0; transition: opacity 0.3s ease; }
-        html.loaded { opacity: 1; }
-    </style>
-    <script>
-        let bp = window.location.pathname;
-        if (!bp.endsWith('.html') && !bp.endsWith('.htm') && !bp.endsWith('/')) {
-            bp += '/';
-        } else if (bp.endsWith('.html') || bp.endsWith('.htm')) {
-            bp = bp.substring(0, bp.lastIndexOf('/') + 1);
-        }
-        const base = document.createElement('base');
-        base.href = bp;
-        document.head.appendChild(base);
-
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = bp + 'styles.css';
-        link.onload = () => {
-            document.documentElement.classList.add('loaded');
-        };
-        document.head.appendChild(link);
-        
-        // Fallback in case of network issues or fast cache
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => document.documentElement.classList.add('loaded'), 50);
-        });
-    </script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%237c3aed'/%3E%3Cg fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 11.55a9 9 0 0 1 13.08 0' stroke-width='1.6' opacity='0.45'/%3E%3Cpath d='M2.5 8.5a13.5 13.5 0 0 1 19 0' stroke-width='1.4' opacity='0.25'/%3E%3Cpath d='M8.8 14.9a5 5 0 0 1 6.4 0' stroke-width='1.8' opacity='0.8'/%3E%3Ccircle cx='12' cy='18' r='1.4' fill='white' stroke='none'/%3E%3Cline x1='12' y1='19.4' x2='12' y2='21' stroke-width='1.5'/%3E%3Cline x1='9.8' y1='21' x2='14.2' y2='21' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E">
-    <script type="module" defer>
-      import { polyfillCountryFlagEmojis } from "https://cdn.skypack.dev/country-flag-emoji-polyfill";
-      polyfillCountryFlagEmojis();
-    </script>
+    <script type="module" src="./src/main.js"></script>
+    <link rel="stylesheet" href="./src/input.css" />
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
 </head>
 <body class="h-full text-slate-800 dark:text-slate-200 antialiased font-sans">
-    <div id="app" class="min-h-screen flex flex-col">
+    <div id="app" class="min-h-screen flex flex-col" x-cloak>
+        
         <!-- Auth View -->
-        <main id="view-login" class="hidden flex-1 flex items-center justify-center p-4">
-            <div class="w-full max-w-md bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 relative">
+        <main x-show="!$store.app.isAuthenticated" class="flex-1 flex items-center justify-center p-4">
+            <div class="w-full max-w-md bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 relative" x-data="{ username: '', password: '', error: '' }">
                 <div class="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_top_left,_rgba(125,70,152,0.18),_transparent_25%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_18%)]"></div>
 
-                <!-- Corner controls: language (left) and theme (right) -->
-                <button id="btn-theme-login" type="button" class="absolute left-3 top-3 p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors z-20" title="Toggle Theme">
-                    <!-- Sun Icon (shown in dark mode) -->
+                <button @click="$store.app.toggleTheme()" type="button" class="absolute left-3 top-3 p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors z-20" title="Toggle Theme">
                     <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                    <!-- Moon Icon (shown in light mode) -->
                     <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
                 </button>
 
-                <button id="btn-lang-login" type="button" class="absolute right-3 top-3 px-2 py-1 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md transition-colors shadow-sm border border-slate-200 dark:border-slate-700 z-20" title="Toggle Language">FA</button>
+                <button @click="$store.app.toggleLang()" type="button" class="absolute right-3 top-3 px-2 py-1 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md transition-colors shadow-sm border border-slate-200 dark:border-slate-700 z-20" x-text="$store.app.lang === 'en' ? 'FA' : 'EN'"></button>
 
                 <div class="relative p-8 text-center pt-10">
                     <div class="mx-auto w-16 h-16 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30 mb-6">
@@ -68,36 +39,34 @@
                         </svg>
                     </div>
                     
-                    <h2 data-i18n="login_title" class="text-2xl font-bold tracking-tight" style="font-style:italic;background:linear-gradient(90deg,#7c3aed 0%,#2563eb 45%,#06b6d4 75%,#22c55e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">ToRouter Control</h2>
-                    <p data-i18n="login_desc" class="text-slate-500 dark:text-slate-400 mt-2">Sign in to manage your private nodes.</p>
+                    <h2 x-text="$store.app.t('login_title')" class="text-2xl font-bold tracking-tight" style="font-style:italic;background:linear-gradient(90deg,#7c3aed 0%,#2563eb 45%,#06b6d4 75%,#22c55e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">ToRouter Control</h2>
+                    <p x-text="$store.app.t('login_desc')" class="text-slate-500 dark:text-slate-400 mt-2"></p>
                 </div>
                 <div class="relative p-8 pt-0">
-                    <form id="form-login" class="space-y-6">
+                    <form @submit.prevent="$store.app.login(username, password, err => error = err)" class="space-y-6">
                         <div>
-                            <label data-i18n="login_user" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Username</label>
-                            <input type="text" id="login-username" required class="mt-1 block w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
+                            <label x-text="$store.app.t('login_user')" class="block text-sm font-medium text-slate-700 dark:text-slate-300"></label>
+                            <input x-model="username" type="text" required class="mt-1 block w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
                         </div>
-                        <div>
-                            <label data-i18n="login_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Password</label>
+                        <div x-data="{ show: false }">
+                            <label x-text="$store.app.t('login_pass')" class="block text-sm font-medium text-slate-700 dark:text-slate-300"></label>
                             <div class="relative mt-1">
-                                <input type="password" id="login-password" required class="block w-full px-4 py-3 pr-12 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
-                                <button type="button" class="pwd-toggle absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" data-target="login-password" tabindex="-1" title="Toggle password visibility">
-                                    <svg class="w-5 h-5 eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                    <svg class="w-5 h-5 eye-off-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                                <input x-model="password" :type="show ? 'text' : 'password'" required class="block w-full px-4 py-3 pr-12 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
+                                <button type="button" @click="show = !show" class="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" tabindex="-1">
+                                    <svg x-show="!show" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    <svg x-show="show" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
                                 </button>
                             </div>
                         </div>
-                        <div id="login-error" class="hidden text-sm text-red-600 dark:text-red-400 font-medium"></div>
-                        <button data-i18n="login_btn" type="submit" class="w-full py-3 px-4 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-lg shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50">
-                            Sign In
-                        </button>
+                        <div x-show="error" x-text="error" class="text-sm text-red-600 dark:text-red-400 font-medium"></div>
+                        <button type="submit" x-text="$store.app.t('login_btn')" class="w-full py-3 px-4 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-lg shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50"></button>
                     </form>
                 </div>
             </div>
         </main>
 
         <!-- Dashboard View -->
-        <div id="view-dashboard" class="hidden flex-col min-h-screen bg-slate-50 dark:bg-slate-900">
+        <div x-show="$store.app.isAuthenticated" class="flex-col min-h-screen bg-slate-50 dark:bg-slate-900" x-data="{ routeModalOpen: false, settingsModalOpen: false, logsModalOpen: false, editingNode: null, deleteModalOpen: false, targetDelete: null }">
             <!-- Nav -->
             <nav class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm flex-wrap gap-y-3">
                 <div class="flex items-center gap-2 sm:gap-3">
@@ -112,316 +81,464 @@
                         </svg>
                     </div>
                     <div class="min-w-0">
-                        <h1 data-i18n="nav_title" class="text-lg sm:text-xl font-bold tracking-tight leading-tight" style="font-style:italic;background:linear-gradient(90deg,#7c3aed 0%,#2563eb 45%,#06b6d4 75%,#22c55e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">ToRouter</h1>
+                        <h1 x-text="$store.app.t('nav_title')" class="text-lg sm:text-xl font-bold tracking-tight leading-tight" style="font-style:italic;background:linear-gradient(90deg,#7c3aed 0%,#2563eb 45%,#06b6d4 75%,#22c55e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"></h1>
                         <p class="hidden sm:block text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Support developer on Telegram and GitHub</p>
                     </div>
                 </div>
-                <div class="hidden md:flex items-center gap-3">
-                    <a href="https://github.com/ArashAfkandeh/ToRouter-Multi-Location" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all shadow-sm pl-2.5 pr-3 py-1.5" title="View Source on GitHub">
-                        <i class="fa-brands fa-github text-base"></i>
-                        <span class="text-xs font-semibold">Star<span id="github-stars-count" class="ml-1 opacity-80"></span></span>
-                    </a>
-                    <a href="tg://resolve?domain=ArashAfkandeh" class="inline-flex items-center gap-2 rounded-full border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/50 hover:text-sky-700 dark:hover:text-sky-300 transition-all shadow-sm pl-2.5 pr-3 py-1.5" title="Contact Developer on Telegram">
-                        <i class="fa-brands fa-telegram text-base"></i>
-                        <span class="text-xs font-semibold">Support</span>
-                    </a>
-                </div>
                 <div class="flex items-center gap-1 sm:gap-3 overflow-x-auto no-scrollbar">
-                    <button id="btn-lang" class="px-2 py-1 text-xs sm:text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md transition-colors shadow-sm border border-slate-200 dark:border-slate-700 shrink-0" title="Toggle Language">
-                        EN
-                    </button>
-                    <button id="btn-theme" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Toggle Theme">
-                        <!-- Sun Icon (shown in dark mode) -->
+                    <button @click="$store.app.toggleLang()" x-text="$store.app.lang === 'en' ? 'FA' : 'EN'" class="px-2 py-1 text-xs sm:text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-md transition-colors shadow-sm border border-slate-200 dark:border-slate-700 shrink-0"></button>
+                    <button @click="$store.app.toggleTheme()" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Toggle Theme">
                         <svg class="w-4 h-4 sm:w-5 sm:h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                        <!-- Moon Icon (shown in light mode) -->
                         <svg class="w-4 h-4 sm:w-5 sm:h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
                     </button>
-                    <button id="btn-refresh" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Refresh">
+                    <button @click="$store.app.fetchNodes()" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Refresh">
                         <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                     </button>
-                    <button id="btn-settings" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Settings">
+                    <button @click="settingsModalOpen = true" class="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-lg transition-colors shrink-0" title="Settings">
                         <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </button>
-                    <button data-i18n="nav_logout" id="btn-logout" class="px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition-colors shrink-0">
-                        Logout
-                    </button>
+                    <button @click="$store.app.logout()" x-text="$store.app.t('nav_logout')" class="px-2 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg transition-colors shrink-0"></button>
                 </div>
             </nav>
 
             <main class="flex-1 w-full mx-auto p-4 sm:p-6 lg:p-8">
-                <!-- Action Bar -->
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
                     <div>
-                        <h2 data-i18n="dash_title" class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Exit Nodes</h2>
-                        <p data-i18n="dash_desc" class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage and monitor active Tor routing nodes.</p>
+                        <h2 x-text="$store.app.t('dash_title')" class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight"></h2>
+                        <p x-text="$store.app.t('dash_desc')" class="text-sm text-slate-500 dark:text-slate-400 mt-1"></p>
                     </div>
                     <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full lg:w-auto">
-                        <!-- Metrics Overview -->
-                        <div class="flex flex-wrap items-center gap-2 shrink-0" id="metrics-container">
-                            <!-- Populated via JS -->
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-full border border-slate-200 dark:border-slate-700/80 shadow-sm">
+                                <div class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
+                                <span class="text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300" x-text="$store.app.t('total_nodes')"></span>
+                                <span class="text-sm font-bold text-slate-900 dark:text-white ml-1" x-text="$store.app.metrics.total"></span>
+                            </div>
+                            <div class="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/50 dark:bg-emerald-900/20 rounded-full border border-emerald-200/60 dark:border-emerald-800/60 shadow-sm">
+                                <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                                <span class="text-xs font-semibold uppercase tracking-widest text-emerald-700 dark:text-emerald-400" x-text="$store.app.t('metric_healthy')"></span>
+                                <span class="text-sm font-bold text-emerald-800 dark:text-emerald-300 ml-1" x-text="$store.app.metrics.healthy"></span>
+                            </div>
+                            <div class="flex items-center gap-2 px-3 py-1.5 bg-red-50/50 dark:bg-red-900/20 rounded-full border border-red-200/60 dark:border-red-800/60 shadow-sm">
+                                <div class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+                                <span class="text-xs font-semibold uppercase tracking-widest text-red-700 dark:text-red-400" x-text="$store.app.t('metric_error')"></span>
+                                <span class="text-sm font-bold text-red-800 dark:text-red-300 ml-1" x-text="$store.app.metrics.error"></span>
+                            </div>
                         </div>
                         <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
                         <div class="flex flex-nowrap overflow-x-auto no-scrollbar gap-2 w-full sm:w-auto pb-1 sm:pb-0 shrink-0">
-                            <a id="link-countries" href="Countries.html" target="_blank" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-1.5">
+                            <a :href="`Countries.html?lang=${$store.app.lang}&theme=${$store.app.theme}`" target="_blank" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-teal-500 flex items-center gap-1.5">
                                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                <span data-i18n="btn_countries" class="whitespace-nowrap">Tor Countries</span>
+                                <span x-text="$store.app.t('btn_countries')" class="whitespace-nowrap"></span>
                             </a>
-                            <button id="btn-create-route" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-brand-500 flex items-center gap-1.5">
+                            <button @click="editingNode = null; routeModalOpen = true" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-brand-500 flex items-center gap-1.5">
                                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                                <span data-i18n="btn_add_node" class="whitespace-nowrap">Add Node</span>
+                                <span x-text="$store.app.t('btn_add_node')" class="whitespace-nowrap"></span>
                             </button>
-                            <button id="btn-view-logs" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-slate-500 flex items-center gap-1.5">
+                            <button @click="logsModalOpen = true" class="shrink-0 px-3 py-2 sm:px-4 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-slate-500 flex items-center gap-1.5">
                                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-                                <span data-i18n="btn_view_logs" class="whitespace-nowrap">Logs</span>
+                                <span x-text="$store.app.t('btn_view_logs')" class="whitespace-nowrap"></span>
                             </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Nodes Grid -->
-                <div id="nodes-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 1.25rem;">
-                    <!-- Populated via JS -->
+                <template x-if="$store.app.nodes.length === 0">
+                    <div class="col-span-full py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl">
+                        <div class="w-16 h-16 mx-auto bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                        </div>
+                        <h3 x-text="$store.app.t('nodes_empty_title')" class="text-lg font-medium text-slate-900 dark:text-white"></h3>
+                        <p x-text="$store.app.t('nodes_empty_desc')" class="text-slate-500 dark:text-slate-400 mt-1 mb-6"></p>
+                        <button @click="editingNode = null; routeModalOpen = true" class="px-5 py-2.5 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400 font-medium rounded-lg hover:bg-brand-100 dark:hover:bg-brand-900/50 transition-colors inline-flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            <span x-text="$store.app.t('btn_add_node')"></span>
+                        </button>
+                    </div>
+                </template>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 1.25rem;">
+                    <template x-for="node in $store.app.nodes" :key="node.id">
+                        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow animate-fade-in relative">
+                            <div class="h-1 w-full" :class="{ 'bg-emerald-500': node.status === 'healthy', 'bg-yellow-500': node.status === 'warning', 'bg-red-500': node.status === 'error' }"></div>
+                            <div class="p-4 flex-1 select-text">
+                                <div class="flex items-start justify-between gap-3 mb-3">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <div class="relative flex h-3 w-3">
+                                            <span class="relative inline-flex rounded-full h-3 w-3" :class="{ 'bg-emerald-500 animate-ping': node.status === 'healthy', 'bg-yellow-500 animate-pulse': node.status === 'warning', 'bg-red-500': node.status === 'error' }"></span>
+                                        </div>
+                                        <h3 class="font-semibold text-base text-slate-900 dark:text-white truncate" x-text="node.name"></h3>
+                                    </div>
+                                    <div class="country-flag-emoji inline-flex items-center justify-center transition-all duration-300 text-3xl" x-text="$store.app.getCountryFlagEmoji(node.country_code) || node.country_code"></div>
+                                </div>
+                                <div class="space-y-2 mb-4 text-sm text-slate-600 dark:text-slate-300">
+                                    <div class="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-700/50">
+                                        <span class="text-slate-500 dark:text-slate-400 font-medium" x-text="$store.app.t('card_port')"></span>
+                                        <span class="font-mono text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-700 px-2 pl-2 rounded" x-text="node.input_port"></span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-700/50">
+                                        <span class="text-slate-500 dark:text-slate-400 font-medium" x-text="$store.app.t('card_ip')"></span>
+                                        <span class="font-mono" :class="node.tor_ip ? 'text-slate-900 dark:text-white' : 'text-slate-400 italic'" x-text="node.tor_ip || 'Acquiring...'"></span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-700/50">
+                                        <span class="text-slate-500 dark:text-slate-400 font-medium" x-text="$store.app.t('card_latency')"></span>
+                                        <span class="font-mono" :class="node.status === 'healthy' ? 'text-emerald-600 dark:text-emerald-400' : (node.status === 'error' ? 'text-red-500' : 'text-yellow-500')" x-text="node.latency || 'N/A'"></span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-1">
+                                        <span class="text-slate-500 dark:text-slate-400 font-medium" x-text="$store.app.t('last_check')"></span>
+                                        <span class="font-mono text-slate-900 dark:text-white" x-text="$store.app.formatTime(node.last_checked_at)"></span>
+                                    </div>
+                                    <div class="flex justify-between items-center py-1">
+                                        <span class="text-slate-500 dark:text-slate-400 font-medium" x-text="$store.app.t('card_auth')"></span>
+                                        <span class="font-mono text-slate-900 dark:text-white">
+                                            <i class="fa-solid fa-lock" x-show="node.username && node.password"></i>
+                                            <i class="fa-solid fa-lock-open" x-show="!(node.username && node.password)"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-slate-50 dark:bg-slate-800/80 p-3 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center gap-2">
+                                <button @click="$store.app.restartNode(node.id)" class="flex-1 px-2.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-600 rounded-xl shadow-sm transition-colors flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                    <span x-text="$store.app.t('card_restart')"></span>
+                                </button>
+                                <button @click="editingNode = JSON.parse(JSON.stringify(node)); routeModalOpen = true" class="p-2 text-slate-500 hover:text-brand-600 hover:bg-brand-50 dark:text-slate-400 dark:hover:text-brand-400 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent shadow-sm" title="Edit">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                </button>
+                                <button @click="targetDelete = node; deleteModalOpen = true" class="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:text-slate-400 dark:hover:text-red-400 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent shadow-sm" title="Delete">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </main>
-        </div>
 
-        <!-- Node Modal -->
-        <div id="modal-route" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-slate-800 w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
-                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
-                    <h3 id="modal-route-title" data-i18n="modal_route_title" class="text-lg font-semibold text-slate-900 dark:text-white">Create Node</h3>
-                    <button class="modal-close p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-                <div class="p-4 overflow-y-auto no-scrollbar">
-                    <form id="form-route" class="space-y-3">
-                        <input type="hidden" id="route-id">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label data-i18n="modal_route_name" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Name</label>
-                                <input type="text" id="route-name" placeholder="e.g. node-1" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                            <div>
-                                <label data-i18n="modal_route_country" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Country Code</label>
-                                <input type="text" id="route-country" placeholder="US, DE" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none uppercase" maxlength="2">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label data-i18n="modal_route_bind" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Bind Address</label>
-                                <input type="text" id="route-bind" placeholder="127.0.0.1" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                            <div>
-                                <label data-i18n="modal_route_port" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Input Port</label>
-                                <input type="number" id="route-port" placeholder="9050" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label data-i18n="modal_route_interval" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Test Interval (Min)</label>
-                                <input type="number" id="route-interval" placeholder="10" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                            <div>
-                                <label data-i18n="modal_route_swap" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Swap Interval (Min)</label>
-                                <input type="number" id="route-swap" placeholder="60" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label data-i18n="modal_route_user" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Username (Opt)</label>
-                                <input type="text" id="route-user" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                            </div>
-                            <div>
-                                <label data-i18n="modal_route_pass" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Password (Opt)</label>
-                                <div class="relative">
-                                    <input type="password" id="route-pass" class="w-full px-3 py-1.5 pr-10 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
-                                    <button type="button" class="pwd-toggle absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" data-target="route-pass" tabindex="-1" title="Toggle password visibility">
-                                        <svg class="w-4 h-4 eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                        <svg class="w-4 h-4 eye-off-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
-                                    </button>
+            <!-- Route Modal component -->
+            <div x-show="routeModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" x-transition.opacity>
+                <div @click.outside="routeModalOpen = false" class="bg-white dark:bg-slate-800 w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-transform duration-300" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                    <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+                        <h3 class="text-lg font-semibold text-slate-900 dark:text-white" x-text="$store.app.t(editingNode ? 'modal_route_edit' : 'modal_route_title')"></h3>
+                        <button @click="routeModalOpen = false" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    <div class="p-4 overflow-y-auto no-scrollbar" x-data="{
+                        form: editingNode || { name: '', bind_address: '', input_port: '', country_code: '', test_interval_minutes: 10, swap_interval_minutes: 60, username: '', password: '' },
+                        showPass: false,
+                        init() {
+                            this.$watch('editingNode', val => {
+                                if (val) this.form = {...val};
+                                else this.form = { name: '', bind_address: '', input_port: '', country_code: '', test_interval_minutes: 10, swap_interval_minutes: 60, username: '', password: '' };
+                            })
+                        },
+                        async save() {
+                            const res = await window.nodesService.saveNode(this.form);
+                            if (res.error) $store.toast.show(res.error, 'error');
+                            else {
+                                $store.toast.show('Success', 'success');
+                                routeModalOpen = false;
+                                $store.app.fetchNodes();
+                            }
+                        }
+                    }">
+                        <form @submit.prevent="save" class="space-y-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_name')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.name" type="text" placeholder="e.g. node-1" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                </div>
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_country')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.country_code" type="text" placeholder="US, DE" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none uppercase" maxlength="2">
                                 </div>
                             </div>
-                        </div>
-                        <div class="mt-4 flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50">
-                            <button data-i18n="modal_btn_cancel" type="button" class="modal-close px-4 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancel</button>
-                            <button id="modal-route-btn-save" data-i18n="modal_route_btn_save" type="submit" class="px-4 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none">Save Node</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Settings Modal -->
-        <div id="modal-settings" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-slate-800 w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300">
-                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
-                    <h3 data-i18n="modal_set_title" class="text-lg font-semibold text-slate-900 dark:text-white">Settings</h3>
-                    <button class="modal-close-settings p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-                <div class="p-6 overflow-y-auto no-scrollbar">
-                    <form id="form-settings" class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <!-- Network Section -->
-                        <div class="space-y-4">
-                            <h4 data-i18n="modal_set_net" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Network</h4>
-                            <div>
-                                <label data-i18n="modal_set_web_bind" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Web Panel Bind</label>
-                                <input type="text" id="set-web-bind" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
-                            </div>
-                            <div>
-                                <label data-i18n="modal_set_port" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Port</label>
-                                <input type="number" id="set-web-port" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Log Level</label>
-                                <select id="set-log-level" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
-                                    <option value="trace">Trace (Very Verbose)</option>
-                                    <option value="debug">Debug (Verbose)</option>
-                                    <option value="info">Info (Normal)</option>
-                                    <option value="warn">Warning (Quiet)</option>
-                                    <option value="error">Error (Very Quiet)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Admin Credentials Section -->
-                        <div class="space-y-4">
-                            <h4 data-i18n="modal_set_auth" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Admin Credentials</h4>
-                            <div>
-                                <label data-i18n="modal_set_user" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Admin Username</label>
-                                <input type="text" id="set-admin-user" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
-                            </div>
-                            <div>
-                                <label data-i18n="modal_set_pass" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">New Admin Password</label>
-                                <div class="relative">
-                                    <input type="password" id="set-admin-pass" placeholder="(Leave empty to keep)" class="w-full px-4 py-2.5 pr-12 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
-                                    <button type="button" class="pwd-toggle absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" data-target="set-admin-pass" tabindex="-1" title="Toggle password visibility">
-                                        <svg class="w-5 h-5 eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                        <svg class="w-5 h-5 eye-off-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
-                                    </button>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_bind')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.bind_address" type="text" placeholder="127.0.0.1" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                </div>
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_port')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.input_port" type="number" placeholder="9050" required class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                                 </div>
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Web Base Path</label>
-                                <div class="relative">
-                                    <input type="text" id="set-web-base" placeholder="e.g. /my-secret-panel (empty for root)" class="w-full px-4 py-2.5 pr-12 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500 font-mono text-sm">
-                                    <button type="button" id="btn-generate-base" class="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-brand-500 transition-colors" title="Generate random path">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                    </button>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_interval')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.test_interval_minutes" type="number" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                </div>
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_swap')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.swap_interval_minutes" type="number" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
                                 </div>
                             </div>
-                        </div>
-
-                        <!-- Auto-SSL Section -->
-                        <div class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <h4 data-i18n="modal_set_ssl" class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-0">Auto-SSL / Custom SSL</h4>
-                                <label class="flex items-center cursor-pointer">
-                                    <span class="mr-2 text-xs font-medium text-slate-600 dark:text-slate-400">Custom Cert</span>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_user')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                    <input x-model="form.username" type="text" class="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                </div>
+                                <div>
+                                    <label x-text="$store.app.t('modal_route_pass')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
                                     <div class="relative">
-                                        <input type="checkbox" id="set-custom-cert-toggle" class="sr-only">
-                                        <div class="block bg-slate-300 dark:bg-slate-600 w-10 h-6 rounded-full transition-colors duration-200"></div>
-                                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform duration-200"></div>
+                                        <input x-model="form.password" :type="showPass ? 'text' : 'password'" class="w-full px-3 py-1.5 pr-10 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                        <button @click="showPass = !showPass" type="button" class="absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                                            <svg x-show="!showPass" class="w-4 h-4 eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            <svg x-show="showPass" class="w-4 h-4 eye-off-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                                        </button>
                                     </div>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                                <button @click="routeModalOpen = false" x-text="$store.app.t('modal_btn_cancel')" type="button" class="px-4 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"></button>
+                                <button x-text="$store.app.t('modal_route_btn_save')" type="submit" class="px-4 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none"></button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delete Confirmation Modal -->
+            <div x-show="deleteModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" x-transition.opacity>
+                <div @click.outside="deleteModalOpen = false" class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-transform duration-300 relative" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                    <div class="p-6 text-center">
+                        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+                            <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                        <h3 x-text="$store.app.t('modal_del_title')" class="text-lg font-medium text-slate-900 dark:text-white mb-2"></h3>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mb-6" x-text="$store.app.t('modal_del_msg').replace('{name}', targetDelete?.name)"></p>
+                        <div class="flex justify-center gap-3">
+                            <button @click="deleteModalOpen = false" type="button" x-text="$store.app.t('modal_btn_cancel')" class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-300 dark:border-slate-600"></button>
+                            <button @click="$store.app.deleteNode(targetDelete.id).then(r => r && (deleteModalOpen = false))" type="button" x-text="$store.app.t('modal_del_btn_confirm')" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-red-500 outline-none"></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Modal -->
+            <!-- Same structure for settings and logs mapped to Alpine... -->
+            <!-- Settings Modal Content using Alpine x-data="{...}" for state -->
+            <div x-show="settingsModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" x-transition.opacity>
+                <div @click.outside="settingsModalOpen = false" class="bg-white dark:bg-slate-800 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-transform duration-300" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                    <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+                        <h3 class="text-lg font-semibold text-slate-900 dark:text-white" x-text="$store.app.t('modal_set_title')"></h3>
+                        <button @click="settingsModalOpen = false" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    <div class="p-4 overflow-y-auto no-scrollbar" x-data="{
+                        form: {
+                            web_bind_address: '', web_panel_port: '', log_level: 'info', admin_username: '', admin_password: '', domain: '', acme_email: '', custom_cert: false, ssl_cert_path: '', ssl_key_path: ''
+                        },
+                        showPass: false,
+                        async init() {
+                            const res = await window.settingsService.fetchSettings();
+                            if (!res.error && res.data) {
+                                this.form.web_bind_address = res.data.web_bind_address || '';
+                                this.form.web_panel_port = res.data.web_panel_port || '';
+                                this.form.log_level = res.data.log_level || 'info';
+                                this.form.admin_username = res.data.admin_username || '';
+                                this.form.domain = res.data.domain || '';
+                                this.form.acme_email = res.data.acme_email || '';
+                                this.form.custom_cert = res.data.custom_cert || false;
+                                this.form.ssl_cert_path = res.data.ssl_cert_path || '';
+                                this.form.ssl_key_path = res.data.ssl_key_path || '';
+                            }
+                        },
+                        async save() {
+                            const res = await window.settingsService.saveSettings(this.form);
+                            if (res.error) $store.toast.show(res.error, 'error');
+                            else {
+                                $store.toast.show('Settings updated. Requires restart.', 'success');
+                                settingsModalOpen = false;
+                            }
+                        }
+                    }">
+                        <form @submit.prevent="save" class="space-y-6 px-2 pb-4">
+                            <!-- Settings Form Content -->
+                            <div>
+                                <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 border-b border-slate-100 dark:border-slate-700/50 pb-1" x-text="$store.app.t('modal_set_net')"></h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label x-text="$store.app.t('modal_set_web_bind')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                        <input x-model="form.web_bind_address" type="text" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                    <div>
+                                        <label x-text="$store.app.t('modal_set_web_port')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                        <input x-model="form.web_panel_port" type="number" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 border-b border-slate-100 dark:border-slate-700/50 pb-1" x-text="$store.app.t('modal_set_ssl')"></h4>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mb-3" x-text="$store.app.t('modal_set_ssl_help')"></p>
+                                
+                                <label class="flex items-center gap-2 mb-3 cursor-pointer">
+                                    <input type="checkbox" x-model="form.custom_cert" class="rounded border-slate-300 text-brand-600 shadow-sm focus:border-brand-300 focus:ring focus:ring-brand-200 focus:ring-opacity-50">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Use Custom Certificate Files</span>
                                 </label>
+                                
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" x-show="!form.custom_cert">
+                                    <div>
+                                        <label x-text="$store.app.t('modal_set_domain')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                        <input x-model="form.domain" type="text" placeholder="panel.example.com" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                    <div>
+                                        <label x-text="$store.app.t('modal_set_email')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                        <input x-model="form.acme_email" type="email" placeholder="admin@example.com" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" x-show="form.custom_cert">
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Certificate Path (cert.pem)</label>
+                                        <input x-model="form.ssl_cert_path" type="text" placeholder="/path/to/cert.pem" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Private Key Path (key.pem)</label>
+                                        <input x-model="form.ssl_key_path" type="text" placeholder="/path/to/key.pem" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                </div>
                             </div>
-                            <div id="auto-ssl-fields" class="space-y-4">
-                                <div>
-                                    <label data-i18n="modal_set_domain" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Domain / Subdomain</label>
-                                    <input type="text" id="set-domain" placeholder="e.g. panel.example.com (empty to disable)" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500">
-                                </div>
-                                <div>
-                                    <p data-i18n="modal_set_ssl_help" class="text-xs text-slate-500 mt-1">If domain is set, panel will automatically fetch and renew SSL certs using ALPN-01 on port 443. The panel itself stays on its configured port.</p>
+                            
+                            <div>
+                                <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3 border-b border-slate-100 dark:border-slate-700/50 pb-1" x-text="$store.app.t('modal_set_auth')"></h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label x-text="$store.app.t('modal_set_user')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                        <input x-model="form.admin_username" type="text" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    </div>
+                                    <div>
+                                        <label x-text="$store.app.t('modal_set_pass')" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"></label>
+                                        <div class="relative">
+                                            <input x-model="form.admin_password" :type="showPass ? 'text' : 'password'" placeholder="Leave blank to keep current" class="w-full px-3 py-2 pr-10 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                            <button @click="showPass = !showPass" type="button" class="absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                                                <svg x-show="!showPass" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                                <svg x-show="showPass" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Log Level</label>
+                                        <select x-model="form.log_level" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                            <option value="error">Error</option>
+                                            <option value="warn">Warn</option>
+                                            <option value="info">Info</option>
+                                            <option value="debug">Debug</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
-                            <div id="custom-ssl-fields" class="space-y-4 hidden">
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Certificate Path (.crt / .pem)</label>
-                                    <input type="text" id="set-cert-path" placeholder="/etc/letsencrypt/live/domain/fullchain.pem" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500 font-mono text-xs">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Private Key Path (.key / .pem)</label>
-                                    <input type="text" id="set-key-path" placeholder="/etc/letsencrypt/live/domain/privkey.pem" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-brand-500 font-mono text-xs">
-                                </div>
+                            
+                            <div class="mt-4 flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                                <button @click="settingsModalOpen = false" x-text="$store.app.t('modal_btn_cancel')" type="button" class="px-4 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"></button>
+                                <button x-text="$store.app.t('modal_set_btn_save')" type="submit" class="px-4 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors"></button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Modal -->
+            <div x-show="logsModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" x-transition.opacity>
+                <div @click.outside="logsModalOpen = false" class="bg-white dark:bg-slate-800 w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform transition-transform duration-300" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                    <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between shrink-0">
+                        <div class="flex items-center gap-3">
+                            <h3 class="text-lg font-semibold text-slate-900 dark:text-white" x-text="$store.app.t('modal_logs_title')"></h3>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button @click="logsModalOpen = false" class="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-hidden flex flex-col" x-data="{
+                        logs: [],
+                        levelFilter: 'ALL',
+                        loading: false,
+                        async fetchLogs() {
+                            this.loading = true;
+                            const res = await window.logsService.fetchLogs();
+                            if (!res.error && res.data) {
+                                this.logs = res.data.logs.split('\n').filter(l => l.trim().length > 0);
+                            }
+                            this.loading = false;
+                            this.$nextTick(() => {
+                                const container = this.$refs.logsContainer;
+                                if(container) container.scrollTop = container.scrollHeight;
+                            });
+                        },
+                        init() {
+                            this.$watch('logsModalOpen', val => {
+                                if (val) this.fetchLogs();
+                            });
+                        },
+                        get filteredLogs() {
+                            if (this.levelFilter === 'ALL') return this.logs;
+                            return this.logs.filter(l => l.includes(` ${this.levelFilter} `));
+                        },
+                        copy() {
+                            navigator.clipboard.writeText(this.filteredLogs.join('\n'));
+                            $store.toast.show($store.app.t('copied_to_clipboard'), 'success');
+                        }
+                    }">
+                        <div class="px-6 py-3 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between gap-4">
+                            <select x-model="levelFilter" class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-brand-500 outline-none">
+                                <option value="ALL" x-text="$store.app.t('log_level_all')"></option>
+                                <option value="INFO" x-text="$store.app.t('log_level_info')"></option>
+                                <option value="WARN" x-text="$store.app.t('log_level_warn')"></option>
+                                <option value="ERROR" x-text="$store.app.t('log_level_error')"></option>
+                                <option value="DEBUG" x-text="$store.app.t('log_level_debug')"></option>
+                            </select>
+                            <div class="flex items-center gap-2">
+                                <button @click="copy()" class="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                    Copy
+                                </button>
+                                <button @click="fetchLogs()" class="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                                    <svg class="w-3.5 h-3.5" :class="{'animate-spin': loading}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                    Refresh
+                                </button>
                             </div>
                         </div>
-
-                        <div class="col-span-1 md:col-span-3">
-                            <div id="settings-msg" class="hidden text-sm font-medium mt-2"></div>
-                            <div class="mt-4 flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-700/50">
-                                <button data-i18n="modal_btn_cancel" type="button" class="modal-close-settings px-5 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Cancel</button>
-                                <button data-i18n="modal_set_btn_save" type="submit" class="px-5 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-brand-500 outline-none">Update Settings</button>
+                        <div x-ref="logsContainer" class="flex-1 p-4 bg-[#1e1e1e] overflow-y-auto font-mono text-[13px] leading-relaxed relative text-slate-300 h-[50vh]">
+                            <div x-show="loading" class="absolute inset-0 bg-[#1e1e1e]/50 backdrop-blur-sm flex items-center justify-center z-10">
+                                <svg class="w-8 h-8 text-brand-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            </div>
+                            <template x-for="(log, idx) in filteredLogs" :key="idx">
+                                <div class="py-0.5 border-b border-white/5 hover:bg-white/5 transition-colors whitespace-pre-wrap break-all"
+                                     :class="{
+                                        'text-red-400': log.includes(' ERROR '),
+                                        'text-yellow-400': log.includes(' WARN '),
+                                        'text-emerald-400': log.includes(' INFO '),
+                                        'text-slate-400': log.includes(' DEBUG ')
+                                     }" x-text="log"></div>
+                            </template>
+                            <div x-show="filteredLogs.length === 0" class="text-center text-slate-500 py-8">
+                                No logs found
                             </div>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Delete Confirmation Modal -->
-        <div id="modal-delete" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300 relative">
-                <div class="p-6 text-center">
-                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                        <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                        </svg>
-                    </div>
-                    <h3 data-i18n="modal_del_title" class="text-lg font-medium text-slate-900 dark:text-white mb-2">Delete Node</h3>
-                    <p id="delete-node-msg" class="text-sm text-slate-500 dark:text-slate-400 mb-6">Are you sure you want to delete this node? This action cannot be undone.</p>
-                    <div class="flex justify-center gap-3">
-                        <button type="button" data-i18n="modal_btn_cancel" class="modal-close-delete px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-300 dark:border-slate-600">Cancel</button>
-                        <button type="button" id="modal-delete-btn-confirm" data-i18n="modal_del_btn_confirm" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-red-500 outline-none">Delete</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Logs Modal -->
-        <div id="modal-logs" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
-            <div class="bg-white dark:bg-slate-800 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col relative">
-                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-                    <h3 data-i18n="modal_logs_title" class="text-xl font-bold text-slate-900 dark:text-white">Application Logs</h3>
-                    <div class="flex items-center gap-2">
-                        <select id="log-level-filter" class="text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1.5 outline-none text-slate-700 dark:text-slate-300">
-                            <option value="all" data-i18n="log_level_all">All Levels</option>
-                            <option value="info" data-i18n="log_level_info">INFO</option>
-                            <option value="warn" data-i18n="log_level_warn">WARN</option>
-                            <option value="error" data-i18n="log_level_error">ERROR</option>
-                            <option value="debug" data-i18n="log_level_debug">DEBUG</option>
-                        </select>
-                        <button id="btn-copy-logs" type="button" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-300 dark:hover:bg-slate-700/50 rounded-lg transition-colors" title="Copy Logs">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-                        </button>
-                        <button id="btn-refresh-logs" type="button" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-300 dark:hover:bg-slate-700/50 rounded-lg transition-colors" title="Refresh Logs">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        </button>
-                        <button id="modal-close-logs" type="button" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-300 dark:hover:bg-slate-700/50 rounded-lg transition-colors">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="flex-1 overflow-y-auto p-4 bg-slate-950 no-scrollbar">
-                    <pre id="logs-container" class="font-mono text-xs sm:text-sm text-emerald-400 whitespace-pre-wrap break-all">Loading logs...</pre>
-                </div>
-            </div>
+        <!-- Toasts -->
+        <div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+            <template x-for="toast in $store.toast.toasts" :key="toast.id">
+                <div class="px-4 py-2 rounded shadow text-white text-sm"
+                     :class="{
+                         'bg-blue-500': toast.type === 'info',
+                         'bg-emerald-500': toast.type === 'success',
+                         'bg-red-500': toast.type === 'error'
+                     }"
+                     x-text="toast.message"
+                     x-transition></div>
+            </template>
         </div>
-
-        <!-- Toast Container -->
-        <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
     </div>
-    <script>
-        let bpApp = window.location.pathname;
-        if (!bpApp.endsWith('.html') && !bpApp.endsWith('.htm') && !bpApp.endsWith('/')) {
-            bpApp += '/';
-        } else if (bpApp.endsWith('.html') || bpApp.endsWith('.htm')) {
-            bpApp = bpApp.substring(0, bpApp.lastIndexOf('/') + 1);
-        }
-        const appScript = document.createElement('script');
-        appScript.src = bpApp + 'app.js';
-        document.body.appendChild(appScript);
-    </script>
 </body>
 </html>

@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant as StdInstant};
+#[cfg(unix)]
 
 use parking_lot::RwLock;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -12,21 +13,17 @@ use crate::config::RouteConfig;
 use crate::daemon::NOT_CONNECTED;
 use crate::router::{Backend, Slot};
 
-pub fn extract_assets(assets_dir: &Path) -> std::io::Result<PathBuf> {
-    let tor_bin_path = assets_dir.join(if cfg!(windows) { "tor.exe" } else { "tor" });
-    let geoip_path   = assets_dir.join("geoip");
-    let geoip6_path  = assets_dir.join("geoip6");
-
-    std::fs::write(&tor_bin_path, crate::TOR_BINARY_DATA)?;
-    std::fs::write(&geoip_path,   crate::GEOIP_DATA)?;
-    std::fs::write(&geoip6_path,  crate::GEOIP6_DATA)?;
-
+pub fn prepare_assets(assets_dir: &Path) -> std::io::Result<PathBuf> {
+    let tor_bin_path = assets_dir.join("tor-bin");
+    
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&tor_bin_path)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&tor_bin_path, perms)?;
+        if let Ok(metadata) = std::fs::metadata(&tor_bin_path) {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o755);
+            let _ = std::fs::set_permissions(&tor_bin_path, perms);
+        }
     }
 
     Ok(tor_bin_path)
@@ -152,6 +149,30 @@ pub async fn start_tor_instance(
        .stderr(Stdio::piped())
        .kill_on_drop(true);
 
+    #[cfg(unix)]
+    unsafe {
+        cmd.pre_exec(|| {
+            // Lower CPU priority (+10 means lower priority)
+            libc::nice(10);
+            
+            // Limit Virtual Memory to 512 MB to prevent a runaway node from consuming all RAM
+            let rlim = libc::rlimit {
+                rlim_cur: (512 * 1024 * 1024) as libc::rlim_t,
+                rlim_max: (512 * 1024 * 1024) as libc::rlim_t,
+            };
+            libc::setrlimit(libc::RLIMIT_AS, &rlim);
+            
+            // Limit open files to a reasonable number for one tor instance
+            let rlim_files = libc::rlimit {
+                rlim_cur: 4096 as libc::rlim_t,
+                rlim_max: 4096 as libc::rlim_t,
+            };
+            libc::setrlimit(libc::RLIMIT_NOFILE, &rlim_files);
+
+            Ok(())
+        });
+    }
+
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
@@ -195,14 +216,12 @@ pub async fn start_tor_instance(
 
     if !bootstrapped {
         let _ = child.kill().await;
-        let _ = std::fs::remove_dir_all(&instance_dir);
         return Err("Bootstrap timeout".to_string());
     }
     
     debug!("[{}] Tor instance successfully bootstrapped.", log_name);
 
     let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
-    let instance_dir_clone = instance_dir.clone();
     
     tokio::spawn(async move {
         tokio::select! {
@@ -211,7 +230,6 @@ pub async fn start_tor_instance(
         }
         let _ = child.wait().await;
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let _ = std::fs::remove_dir_all(&instance_dir_clone);
     });
 
     Ok(TorInstance {
@@ -226,7 +244,7 @@ pub fn spawn_route_worker(
     tor_data_root: PathBuf,
     geoip_path: PathBuf,
     geoip6_path: PathBuf,
-    global_nodes: crate::daemon::SharedNodes,
+    registry_tx: crate::daemon::RegistryTx,
     db_path: String,
     slot: Arc<RwLock<Slot>>,
 ) -> tokio::task::JoinHandle<()> {
@@ -236,12 +254,13 @@ pub fn spawn_route_worker(
         
         let route_id = route_arc.read().id;
 
-        let node_state = Arc::new(crate::daemon::ActiveNode {
-            latency: Arc::new(RwLock::new(NOT_CONNECTED)),
-            tor_ip: Arc::new(RwLock::new(None)),
-            last_checked_at: Arc::new(RwLock::new(None)),
-        });
-        global_nodes.write().insert(route_id, node_state.clone());
+        // Initialize status in registry
+        let _ = registry_tx.send(crate::daemon::RegistryMsg::UpdateStatus {
+            id: route_id,
+            latency: NOT_CONNECTED,
+            tor_ip: None,
+            last_checked_at: None,
+        }).await;
 
         loop {
             let (name, swap_hours, test_minutes, country_code) = {
@@ -264,9 +283,12 @@ pub fn spawn_route_worker(
                 active_lat = lat;
                 
                 let iso = now_iso();
-                *node_state.latency.write() = lat;
-                *node_state.tor_ip.write() = ip.clone();
-                *node_state.last_checked_at.write() = Some(iso.clone());
+                let _ = registry_tx.send(crate::daemon::RegistryMsg::UpdateStatus {
+                    id: route_id,
+                    latency: lat,
+                    tor_ip: ip.clone(),
+                    last_checked_at: Some(iso.clone()),
+                }).await;
                 let _ = crate::config::update_route_state_by_name(&db_path, &name, ip.as_deref(), Some(&iso));
             }
             
@@ -299,9 +321,12 @@ pub fn spawn_route_worker(
                             last_swap = now_time;
                             
                             let iso = now_iso();
-                            *node_state.latency.write() = test_lat;
-                            *node_state.tor_ip.write() = test_ip.clone();
-                            *node_state.last_checked_at.write() = Some(iso.clone());
+                            let _ = registry_tx.send(crate::daemon::RegistryMsg::UpdateStatus {
+                                id: route_id,
+                                latency: test_lat,
+                                tor_ip: test_ip.clone(),
+                                last_checked_at: Some(iso.clone()),
+                            }).await;
                             let _ = crate::config::update_route_state_by_name(&db_path, &name, test_ip.as_deref(), Some(&iso));
                             
                             if let Some(old) = old_instance {

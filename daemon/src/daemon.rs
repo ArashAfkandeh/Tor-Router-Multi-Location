@@ -77,13 +77,94 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for AppLogger {
     }
 }
 
-pub struct ActiveNode {
-    pub latency: Arc<RwLock<Duration>>,
-    pub tor_ip: Arc<RwLock<Option<String>>>,
-    pub last_checked_at: Arc<RwLock<Option<String>>>,
+#[derive(Clone, Debug)]
+pub struct NodeStatus {
+    pub latency: Duration,
+    pub tor_ip: Option<String>,
+    pub last_checked_at: Option<String>,
 }
 
-pub type SharedNodes = Arc<RwLock<HashMap<i64, Arc<ActiveNode>>>>;
+#[derive(Debug)]
+pub enum RegistryMsg {
+    UpdateStatus { id: i64, latency: Duration, tor_ip: Option<String>, last_checked_at: Option<String> },
+    GetAllStatus { reply: tokio::sync::oneshot::Sender<HashMap<i64, NodeStatus>> },
+    Remove { id: i64 },
+}
+
+pub type RegistryTx = mpsc::Sender<RegistryMsg>;
+
+pub fn start_registry() -> RegistryTx {
+    let (tx, mut rx) = mpsc::channel::<RegistryMsg>(100);
+    tokio::spawn(async move {
+        let mut map: HashMap<i64, NodeStatus> = HashMap::new();
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                RegistryMsg::UpdateStatus { id, latency, tor_ip, last_checked_at } => {
+                    map.insert(id, NodeStatus { latency, tor_ip, last_checked_at });
+                }
+                RegistryMsg::GetAllStatus { reply } => {
+                    let _ = reply.send(map.clone());
+                }
+                RegistryMsg::Remove { id } => {
+                    map.remove(&id);
+                }
+            }
+        }
+    });
+    tx
+}
+
+pub async fn check_and_download_updates(assets_dir: &PathBuf) {
+    let files_to_check = [
+        ("geoip", "https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/assets/geoip"),
+        ("geoip6", "https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/assets/geoip6"),
+        ("tor-bin", "https://raw.githubusercontent.com/ArashAfkandeh/ToRouter-Multi-Location/main/assets/tor-bin"),
+    ];
+
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(60)).build() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let thirty_days_ago = std::time::SystemTime::now() - Duration::from_secs(30 * 24 * 60 * 60);
+
+    for (filename, url) in &files_to_check {
+        let path = assets_dir.join(filename);
+        let mut needs_download = false;
+
+        if !path.exists() {
+            needs_download = true;
+        } else if let Ok(metadata) = std::fs::metadata(&path) {
+            if let Ok(modified) = metadata.modified() {
+                if modified < thirty_days_ago {
+                    needs_download = true;
+                }
+            }
+        }
+
+        if needs_download {
+            tracing::info!("Downloading update for asset {}...", filename);
+            if let Ok(response) = client.get(*url).send().await {
+                if response.status().is_success() {
+                    if let Ok(bytes) = response.bytes().await {
+                        if std::fs::write(&path, &bytes).is_ok() {
+                            tracing::info!("Successfully updated asset {}", filename);
+                            #[cfg(unix)]
+                            if *filename == "tor-bin" {
+                                if let Ok(metadata) = std::fs::metadata(&path) {
+                                    use std::os::unix::fs::PermissionsExt;
+                                    let mut perms = metadata.permissions();
+                                    perms.set_mode(0o755);
+                                    let _ = std::fs::set_permissions(&path, perms);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 pub struct ManagedRoute {
     pub router_handle: tokio::task::JoinHandle<()>,
@@ -117,31 +198,46 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
 
     let pid = process::id();
     let temp_dir = std::env::temp_dir();
-    let assets_dir = temp_dir.join(format!("tor-router-assets-{}", pid));
+    
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::env::current_dir().unwrap());
+    
+    let assets_dir = exe_dir.join("assets");
+    
+    if !assets_dir.exists() {
+        fs::create_dir_all(&assets_dir).unwrap();
+    }
+    
     let tor_data_dir_base = temp_dir.join(format!("tor-router-data-{}", pid));
-
-    fs::create_dir_all(&assets_dir).unwrap();
     fs::create_dir_all(&tor_data_dir_base).unwrap();
 
-    let tor_bin_path = match crate::tor_process::extract_assets(&assets_dir) {
+    let tor_bin_path = match crate::tor_process::prepare_assets(&assets_dir) {
         Ok(p) => p,
         Err(e) => {
-            error!("❌ Failed to extract embedded Tor assets: {}", e);
+            error!("❌ Failed to prepare Tor assets: {}", e);
             process::exit(1);
         }
     };
+    
     let geoip_path = assets_dir.join("geoip");
     let geoip6_path = assets_dir.join("geoip6");
-
-    let assets_clone = assets_dir.clone();
-    let tor_clone = tor_data_dir_base.clone();
 
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.unwrap();
         info!("🛑 Exit signal received! Cleaning up...");
-        let _ = fs::remove_dir_all(assets_clone);
-        let _ = fs::remove_dir_all(tor_clone);
         process::exit(0);
+    });
+    
+    // Spawn background job to check for updates monthly
+    let updates_assets_dir = assets_dir.clone();
+    tokio::spawn(async move {
+        loop {
+            crate::daemon::check_and_download_updates(&updates_assets_dir).await;
+            // Sleep for 30 days
+            tokio::time::sleep(Duration::from_secs(30 * 24 * 60 * 60)).await;
+        }
     });
 
     info!("✅ Daemon started (PID: {}). DB: {:?}", pid, abs_db_path);
@@ -149,20 +245,20 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
     info!("Press Ctrl+C to exit.");
 
     let (restart_tx, mut restart_rx) = mpsc::channel::<i64>(32);
-    let global_nodes: SharedNodes = Arc::new(RwLock::new(HashMap::new()));
+    let registry_tx = start_registry();
 
-    let api_nodes = global_nodes.clone();
+    let api_registry_tx = registry_tx.clone();
     let db_for_api = abs_db_str.clone();
     let mut server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
     let mut web_handle: Option<tokio::task::JoinHandle<()>> = {
         let bind = api_bind.to_string();
         let tx = restart_tx.clone();
-        let api_nodes = api_nodes.clone();
+        let api_registry_tx = api_registry_tx.clone();
         let db_for_api = db_for_api.clone();
         let web_dir = web_dir.clone();
         let h = server_handle.clone();
         Some(tokio::spawn(async move {
-            start_web_server(bind, tx, api_nodes, db_for_api, web_dir, h).await;
+            start_web_server(bind, tx, api_registry_tx, db_for_api, web_dir, h).await;
         }))
     };
 
@@ -186,13 +282,13 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                                 let bind = format!("{}:{}", s.web_bind_address, s.web_panel_port);
                                 let bind_for_spawn = bind.clone();
                                 let tx = restart_tx.clone();
-                                let api_nodes = global_nodes.clone();
+                                let api_registry_tx = registry_tx.clone();
                                 let db_for_api = abs_db_str.clone();
                                 let web_dir = web_dir.clone();
                                 server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
                                 let h = server_handle.clone();
                                 web_handle = Some(tokio::spawn(async move {
-                                    start_web_server(bind_for_spawn, tx, api_nodes, db_for_api, web_dir, h).await;
+                                    start_web_server(bind_for_spawn, tx, api_registry_tx, db_for_api, web_dir, h).await;
                                 }));
                                 info!("✅ Web server respawned on {}", bind);
                             } else {
@@ -206,7 +302,7 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                         // We will just change restart_trigger in DB or we can just stop it here.
                         // If we stop it here, it will be respawned in next tick automatically.
                         if let Some(handles) = active_routes.write().remove(&id) {
-                            global_nodes.write().remove(&id);
+                            let _ = registry_tx.send(RegistryMsg::Remove { id }).await;
                             info!("🔄 [Route {}] Stopping old process...", id);
                             stop_route(handles).await;
                             info!("✅ [Route {}] Stopped, will respawn on next cycle", id);
@@ -218,7 +314,7 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                     reload_config(
                         config,
                         active_routes.clone(),
-                        global_nodes.clone(),
+                        registry_tx.clone(),
                         &tor_bin_path,
                         &tor_data_dir_base,
                         &geoip_path,
@@ -234,7 +330,7 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
 async fn reload_config(
     config: Config,
     active_handles: Arc<RwLock<HashMap<i64, ManagedRoute>>>,
-    global_nodes: SharedNodes,
+    registry_tx: RegistryTx,
     tor_bin: &PathBuf,
     tor_data_root: &PathBuf,
     geoip_path: &PathBuf,
@@ -256,7 +352,7 @@ async fn reload_config(
     for id in &current_ids {
         if !new_routes.contains_key(id) {
             if let Some(handles) = active_handles.write().remove(id) {
-                global_nodes.write().remove(id);
+                let _ = registry_tx.send(RegistryMsg::Remove { id: *id }).await;
                 info!("🛑 [Route {}] Deleting route...", id);
                 stop_route(handles).await;
             }
@@ -288,7 +384,7 @@ async fn reload_config(
                     tor_data_root.clone(),
                     geoip_path.clone(),
                     geoip6_path.clone(),
-                    global_nodes.clone(),
+                    registry_tx.clone(),
                     db_path.to_string(),
                     managed.slot.clone(),
                 );
@@ -323,7 +419,7 @@ async fn reload_config(
                 tor_data_root.clone(),
                 geoip_path.clone(),
                 geoip6_path.clone(),
-                global_nodes.clone(),
+                registry_tx.clone(),
                 db_path.to_string(),
                 slot.clone(),
             );

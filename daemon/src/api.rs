@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
@@ -9,24 +7,23 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, error};
 
+use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
+
 use crate::config::{self, RouteConfig, SettingsUpdate};
 // web restart is signalled via the daemon's restart channel; no exec/spawn here.
-use crate::daemon::{ActiveNode, SharedNodes, NOT_CONNECTED};
+use crate::daemon::{NodeStatus, RegistryMsg, NOT_CONNECTED};
 
 // ─── Shared state ────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AppState {
     pub restart_tx: mpsc::Sender<i64>,
-    pub nodes: SharedNodes,
-    pub db_path: String,
-    // In-memory session tokens (reset on daemon restart – intentional)
-    pub sessions: Arc<RwLock<HashSet<String>>>,
+    pub registry_tx: mpsc::Sender<RegistryMsg>,
+    pub pool: deadpool_sqlite::Pool,
 }
 
 // ─── Wire up the server ──────────────────────────────────────────────────────
@@ -34,16 +31,16 @@ pub struct AppState {
 pub async fn start_web_server(
     bind_addr: String,
     restart_tx: mpsc::Sender<i64>,
-    nodes: SharedNodes,
+    registry_tx: mpsc::Sender<RegistryMsg>,
     db_path: String,
     web_dir: Option<String>,
     server_handle: axum_server::Handle<std::net::SocketAddr>,
 ) {
+    let pool = config::create_pool(&db_path);
     let state = AppState {
         restart_tx,
-        nodes,
-        db_path: db_path.clone(),
-        sessions: Arc::new(RwLock::new(HashSet::new())),
+        registry_tx,
+        pool,
     };
 
     // ── API routes ──────────────────────────────────────────────────────────
@@ -193,13 +190,28 @@ pub async fn start_web_server(
 
 // ─── Session helpers ─────────────────────────────────────────────────────────
 
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
+}
+
+lazy_static::lazy_static! {
+    static ref JWT_SECRET: String = format!("{:x}{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(), std::process::id());
+}
+
 fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    format!("{:x}{:x}", ns, std::process::id())
+    let expiration = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(7))
+        .expect("valid timestamp")
+        .timestamp();
+        
+    let claims = Claims {
+        sub: "admin".to_owned(),
+        exp: expiration as usize,
+    };
+    
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(JWT_SECRET.as_bytes())).unwrap()
 }
 
 fn extract_session(headers: &HeaderMap) -> Option<String> {
@@ -211,13 +223,13 @@ fn extract_session(headers: &HeaderMap) -> Option<String> {
         })
 }
 
-fn require_auth(state: &AppState, headers: &HeaderMap) -> Result<(), (StatusCode, &'static str)> {
+fn require_auth(_state: &AppState, headers: &HeaderMap) -> Result<(), (StatusCode, &'static str)> {
     let token = extract_session(headers)
         .ok_or((StatusCode::UNAUTHORIZED, "Not authenticated"))?;
-    if state.sessions.read().contains(&token) {
-        Ok(())
-    } else {
-        Err((StatusCode::UNAUTHORIZED, "Invalid session"))
+        
+    match decode::<Claims>(&token, &DecodingKey::from_secret(JWT_SECRET.as_bytes()), &Validation::default()) {
+        Ok(_) => Ok(()),
+        Err(_) => Err((StatusCode::UNAUTHORIZED, "Invalid session")),
     }
 }
 
@@ -230,12 +242,10 @@ async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
 ) -> impl IntoResponse {
-    let settings = config::load_settings(&state.db_path)
-        .unwrap_or_default();
+    let settings = db_load_settings(&state.pool).await.unwrap_or_default();
 
     if body.username == settings.admin_username && body.password == settings.admin_password {
         let token = generate_token();
-        state.sessions.write().insert(token.clone());
         let cookie = format!("session={}; Path=/; HttpOnly; SameSite=Strict", token);
         (
             StatusCode::OK,
@@ -290,12 +300,12 @@ fn latency_to_string(lat: Duration) -> String {
     }
 }
 
-fn node_to_response(cfg: &RouteConfig, node: Option<&Arc<ActiveNode>>) -> RouteStatusResponse {
+fn node_to_response(cfg: &RouteConfig, node: Option<&NodeStatus>) -> RouteStatusResponse {
     let (lat, tor_ip, last_checked_at) = match node {
         Some(n) => (
-            *n.latency.read(),
-            n.tor_ip.read().clone(),
-            n.last_checked_at.read().clone(),
+            n.latency,
+            n.tor_ip.clone(),
+            n.last_checked_at.clone(),
         ),
         None => (
             NOT_CONNECTED,
@@ -328,13 +338,17 @@ async fn list_routes(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
 
-    let cfg = match config::load_from_db(&state.db_path) {
+    let cfg = match db_load_from_db(&state.pool).await {
         Ok(c) => c,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     };
-    let nodes = state.nodes.read();
+    
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    let _ = state.registry_tx.send(RegistryMsg::GetAllStatus { reply: reply_tx }).await;
+    let nodes = reply_rx.await.unwrap_or_default();
+    
     let list: Vec<RouteStatusResponse> = cfg.routes.iter()
-        .map(|r| node_to_response(r, nodes.get(&r.id).map(|a| a)))
+        .map(|r| node_to_response(r, nodes.get(&r.id)))
         .collect();
     Json(list).into_response()
 }
@@ -378,9 +392,9 @@ async fn create_route_handler(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
     let route: RouteConfig = body.into();
-    match config::create_route(&state.db_path, &route) {
+    match db_create_route(&state.pool, route).await {
         Ok(id) => Json(serde_json::json!({ "id": id.to_string(), "ok": true })).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
 
@@ -399,12 +413,12 @@ async fn update_route_handler(
     let mut route: RouteConfig = body.into();
     
     // Preserve old restart_trigger
-    if let Ok(old_r) = config::get_route_by_id(&state.db_path, id) {
+    if let Ok(old_r) = db_get_route_by_id(&state.pool, id).await {
         route.restart_trigger = old_r.restart_trigger;
     }
 
-    if let Err(e) = config::update_route(&state.db_path, id, &route) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
+    if let Err(e) = db_update_route(&state.pool, id, route).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
     }
 
     Json(serde_json::json!({ "ok": true })).into_response()
@@ -424,9 +438,9 @@ async fn delete_route_handler(
     // Signal stop before deleting so the running process is killed cleanly
     let _ = state.restart_tx.try_send(id);
 
-    match config::delete_route(&state.db_path, id) {
+    match db_delete_route(&state.pool, id).await {
         Ok(_) => Json(serde_json::json!({ "ok": true })).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
 
@@ -442,10 +456,10 @@ async fn restart_by_id_handler(
         Ok(v) => v,
         Err(_) => return (StatusCode::BAD_REQUEST, "Invalid ID").into_response(),
     };
-    match config::get_route_by_id(&state.db_path, id) {
+    match db_get_route_by_id(&state.pool, id).await {
         Ok(mut route) => {
             route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
-            let _ = config::update_route(&state.db_path, id, &route);
+            let _ = db_update_route(&state.pool, id, route.clone()).await;
             Json(serde_json::json!({ "ok": true, "name": route.name })).into_response()
         }
         Err(_) => (StatusCode::NOT_FOUND, "Route not found").into_response(),
@@ -458,10 +472,10 @@ async fn restart_all_handler(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
     let mut count = 0;
-    if let Ok(mut cfg) = config::load_from_db(&state.db_path) {
+    if let Ok(mut cfg) = db_load_from_db(&state.pool).await {
         for route in &mut cfg.routes {
             route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
-            let _ = config::update_route(&state.db_path, route.id, &route);
+            let _ = db_update_route(&state.pool, route.id, route.clone()).await;
             count += 1;
         }
     }
@@ -475,7 +489,7 @@ async fn get_settings_handler(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
-    match config::load_settings(&state.db_path) {
+    match db_load_settings(&state.pool).await {
         Ok(s) => Json(serde_json::json!({
             "web_panel_port":   s.web_panel_port,
             "web_bind_address": s.web_bind_address,
@@ -499,7 +513,7 @@ async fn save_settings_handler(
     Json(update): Json<SettingsUpdate>,
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
-    let mut settings = config::load_settings(&state.db_path).unwrap_or_default();
+    let mut settings = db_load_settings(&state.pool).await.unwrap_or_default();
     if let Some(p) = update.web_panel_port   { settings.web_panel_port   = p; }
     if let Some(a) = update.web_bind_address { settings.web_bind_address = a; }
     if let Some(p) = update.api_port         { settings.api_port         = p; }
@@ -511,7 +525,7 @@ async fn save_settings_handler(
     settings.custom_cert_path = update.custom_cert_path;
     settings.custom_key_path  = update.custom_key_path;
     settings.domain     = update.domain;
-    match config::save_settings(&state.db_path, &settings) {
+    match db_save_settings(&state.pool, settings.clone()).await {
         Ok(_) => {
             // Signal run_daemon to only restart the web server (do not stop Tor routes)
             let _ = state.restart_tx.send(crate::daemon::WEB_RESTART_SIGNAL).await;
@@ -537,10 +551,10 @@ async fn legacy_restart(
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<LegacyRestartQuery>,
 ) -> impl IntoResponse {
-    if let Ok(cfg) = config::load_from_db(&state.db_path) {
+    if let Ok(cfg) = db_load_from_db(&state.pool).await {
         if let Some(mut route) = cfg.routes.into_iter().find(|r| r.name == q.route) {
             route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
-            let _ = config::update_route(&state.db_path, route.id, &route);
+            let _ = db_update_route(&state.pool, route.id, route.clone()).await;
             return (StatusCode::OK, format!("Restart triggered for {}\n", q.route));
         }
     }
@@ -548,10 +562,14 @@ async fn legacy_restart(
 }
 
 async fn legacy_status(State(state): State<AppState>) -> impl IntoResponse {
-    let cfg = config::load_from_db(&state.db_path).unwrap_or(crate::config::Config { routes: vec![] });
-    let nodes = state.nodes.read();
+    let cfg = db_load_from_db(&state.pool).await.unwrap_or(crate::config::Config { routes: vec![] });
+    
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    let _ = state.registry_tx.send(RegistryMsg::GetAllStatus { reply: reply_tx }).await;
+    let nodes = reply_rx.await.unwrap_or_default();
+    
     let list: Vec<RouteStatusResponse> = cfg.routes.iter()
-        .map(|r| node_to_response(r, nodes.get(&r.id).map(|a| a)))
+        .map(|r| node_to_response(r, nodes.get(&r.id)))
         .collect();
     Json(list)
 }
@@ -585,7 +603,7 @@ async fn probe_route_handler(
         Err(_) => return (StatusCode::BAD_REQUEST, "Invalid ID").into_response(),
     };
 
-    let route = match config::get_route_by_id(&state.db_path, id) {
+    let route = match db_get_route_by_id(&state.pool, id).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "Route not found").into_response(),
     };
@@ -656,3 +674,41 @@ async fn get_logs(
     let logs = crate::daemon::APP_LOGS.read().clone();
     (StatusCode::OK, Json(serde_json::json!({ "logs": logs }))).into_response()
 }
+
+// ─── Async DB Wrappers ───────────────────────────────────────────────────────
+
+async fn db_load_settings(pool: &deadpool_sqlite::Pool) -> Result<config::Settings, String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(|c| config::load_settings_conn(c)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_save_settings(pool: &deadpool_sqlite::Pool, settings: config::Settings) -> Result<(), String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::save_settings_conn(c, &settings)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_load_from_db(pool: &deadpool_sqlite::Pool) -> Result<config::Config, String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(|c| config::load_from_db_conn(c)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_get_route_by_id(pool: &deadpool_sqlite::Pool, id: i64) -> Result<RouteConfig, String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::get_route_by_id_conn(c, id)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_create_route(pool: &deadpool_sqlite::Pool, route: RouteConfig) -> Result<i64, String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::create_route_conn(c, &route)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_update_route(pool: &deadpool_sqlite::Pool, id: i64, route: RouteConfig) -> Result<(), String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::update_route_conn(c, id, &route)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_delete_route(pool: &deadpool_sqlite::Pool, id: i64) -> Result<(), String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::delete_route_conn(c, id)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+

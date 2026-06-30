@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 use rusqlite::{Connection, Result, params};
+use deadpool_sqlite::{Config as DbConfig, Pool, Runtime};
+
+pub fn create_pool(db_path: &str) -> Pool {
+    let cfg = DbConfig::new(db_path);
+    cfg.builder(Runtime::Tokio1).unwrap().build().unwrap()
+}
 
 // ─── RouteConfig (با id برای CRUD) ───────────────────────────────────────────
 
@@ -96,6 +102,7 @@ pub struct SettingsUpdate {
 pub fn init_db(db_path: &str) -> Result<()> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch("
+        PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS routes (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
             name                  TEXT    NOT NULL UNIQUE,
@@ -138,6 +145,10 @@ pub fn init_db(db_path: &str) -> Result<()> {
 
 pub fn load_from_db(db_path: &str) -> Result<Config> {
     let conn = Connection::open(db_path)?;
+    load_from_db_conn(&conn)
+}
+
+pub fn load_from_db_conn(conn: &Connection) -> Result<Config> {
     let mut stmt = conn.prepare(
         "SELECT id, name, bind_address, input_port, username, password, country_code, swap_interval_minutes, test_interval_minutes, tor_ip, last_checked_at, restart_trigger FROM routes"
     )?;
@@ -168,8 +179,13 @@ pub fn load_from_db(db_path: &str) -> Result<Config> {
     Ok(Config { routes })
 }
 
+#[allow(dead_code)]
 pub fn get_route_by_id(db_path: &str, id: i64) -> Result<RouteConfig> {
     let conn = Connection::open(db_path)?;
+    get_route_by_id_conn(&conn, id)
+}
+
+pub fn get_route_by_id_conn(conn: &Connection, id: i64) -> Result<RouteConfig> {
     conn.query_row(
         "SELECT id, name, bind_address, input_port, username, password,
                 country_code, swap_interval_minutes, test_interval_minutes, tor_ip, last_checked_at, restart_trigger
@@ -196,8 +212,13 @@ pub fn get_route_by_id(db_path: &str, id: i64) -> Result<RouteConfig> {
     )
 }
 
+#[allow(dead_code)]
 pub fn create_route(db_path: &str, route: &RouteConfig) -> Result<i64> {
     let conn = Connection::open(db_path)?;
+    create_route_conn(&conn, route)
+}
+
+pub fn create_route_conn(conn: &Connection, route: &RouteConfig) -> Result<i64> {
     conn.execute(
         "INSERT INTO routes
             (name, bind_address, input_port, username, password,
@@ -220,8 +241,13 @@ pub fn create_route(db_path: &str, route: &RouteConfig) -> Result<i64> {
     Ok(conn.last_insert_rowid())
 }
 
+#[allow(dead_code)]
 pub fn update_route(db_path: &str, id: i64, route: &RouteConfig) -> Result<()> {
     let conn = Connection::open(db_path)?;
+    update_route_conn(&conn, id, route)
+}
+
+pub fn update_route_conn(conn: &Connection, id: i64, route: &RouteConfig) -> Result<()> {
     conn.execute(
         "UPDATE routes SET
             name=?1, bind_address=?2, input_port=?3, username=?4, password=?5,
@@ -252,8 +278,13 @@ pub fn update_route_state_by_name(db_path: &str, name: &str, tor_ip: Option<&str
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_route(db_path: &str, id: i64) -> Result<()> {
     let conn = Connection::open(db_path)?;
+    delete_route_conn(&conn, id)
+}
+
+pub fn delete_route_conn(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM routes WHERE id=?1", params![id])?;
     Ok(())
 }
@@ -262,6 +293,10 @@ pub fn delete_route(db_path: &str, id: i64) -> Result<()> {
 
 pub fn load_settings(db_path: &str) -> Result<Settings> {
     let conn = Connection::open(db_path)?;
+    load_settings_conn(&conn)
+}
+
+pub fn load_settings_conn(conn: &Connection) -> Result<Settings> {
     let mut settings = Settings::default();
 
     let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
@@ -288,8 +323,13 @@ pub fn load_settings(db_path: &str) -> Result<Settings> {
     Ok(settings)
 }
 
+#[allow(dead_code)]
 pub fn save_settings(db_path: &str, s: &Settings) -> Result<()> {
     let conn = Connection::open(db_path)?;
+    save_settings_conn(&conn, s)
+}
+
+pub fn save_settings_conn(conn: &Connection, s: &Settings) -> Result<()> {
     let pairs: &[(&str, String)] = &[
         ("web_panel_port",   s.web_panel_port.to_string()),
         ("web_bind_address", s.web_bind_address.clone()),

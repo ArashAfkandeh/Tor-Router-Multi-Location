@@ -12,10 +12,8 @@ use crate::daemon::run_daemon;
 use crate::cli::run_cli;
 use tracing_subscriber::EnvFilter;
 
+// Remove include_bytes! variables
 // Paths relative to daemon/src/main.rs → daemon/../../assets/
-pub const TOR_BINARY_DATA: &[u8] = include_bytes!("../../assets/tor-bin");
-pub const GEOIP_DATA:      &[u8] = include_bytes!("../../assets/geoip");
-pub const GEOIP6_DATA:     &[u8] = include_bytes!("../../assets/geoip6");
 
 // Default API Bind — on all interfaces
 const DEFAULT_API_BIND: &str = "0.0.0.0:9090";
