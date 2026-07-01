@@ -35,7 +35,7 @@ struct TorIpResponse {
     ip: String,
 }
 
-pub async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
+pub async fn measure_latency_with_proxy(proxy_url: &str) -> (Duration, Option<String>) {
     let proxy = match reqwest::Proxy::all(proxy_url) {
         Ok(p) => p,
         Err(_) => return (NOT_CONNECTED, None),
@@ -48,7 +48,10 @@ pub async fn measure_latency(proxy_url: &str) -> (Duration, Option<String>) {
         Ok(c) => c,
         Err(_) => return (NOT_CONNECTED, None),
     };
+    measure_latency(&client).await
+}
 
+pub async fn measure_latency(client: &reqwest::Client) -> (Duration, Option<String>) {
     let start = StdInstant::now();
     let res = client.get("https://www.gstatic.com/generate_204").send().await;
     let latency = match res {
@@ -96,6 +99,7 @@ pub(crate) fn now_iso() -> String {
 pub struct TorInstance {
     pub socks_addr: String,
     pub kill_tx: tokio::sync::oneshot::Sender<()>,
+    pub client: reqwest::Client,
 }
 
 impl TorInstance {
@@ -232,9 +236,13 @@ pub async fn start_tor_instance(
         tokio::time::sleep(Duration::from_secs(2)).await;
     });
 
+    let proxy = reqwest::Proxy::all(format!("socks5h://{}", socks_addr)).map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder().proxy(proxy).timeout(Duration::from_secs(10)).build().map_err(|e| e.to_string())?;
+
     Ok(TorInstance {
         socks_addr,
         kill_tx,
+        client,
     })
 }
 
@@ -245,7 +253,7 @@ pub fn spawn_route_worker(
     geoip_path: PathBuf,
     geoip6_path: PathBuf,
     registry_tx: crate::daemon::RegistryTx,
-    db_path: String,
+    db_pool: deadpool_sqlite::Pool,
     slot: Arc<RwLock<Slot>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -278,8 +286,7 @@ pub fn spawn_route_worker(
             
             let mut active_lat = NOT_CONNECTED;
             if let Some(inst) = &active_instance {
-                let proxy_url = format!("socks5h://{}", inst.socks_addr);
-                let (lat, ip) = measure_latency(&proxy_url).await;
+                let (lat, ip) = measure_latency(&inst.client).await;
                 active_lat = lat;
                 
                 let iso = now_iso();
@@ -289,7 +296,7 @@ pub fn spawn_route_worker(
                     tor_ip: ip.clone(),
                     last_checked_at: Some(iso.clone()),
                 }).await;
-                let _ = crate::config::update_route_state_by_name(&db_path, &name, ip.as_deref(), Some(&iso));
+                let _ = crate::config::update_route_state_by_name(&db_pool, name.clone(), ip.clone(), Some(iso)).await;
             }
             
             if active_instance.is_none() || swap_allowed || active_lat == NOT_CONNECTED {
@@ -303,8 +310,7 @@ pub fn spawn_route_worker(
                     geoip6_path.clone()
                 ).await {
                     Ok(test_inst) => {
-                        let proxy_url = format!("socks5h://{}", test_inst.socks_addr);
-                        let (test_lat, test_ip) = measure_latency(&proxy_url).await;
+                        let (test_lat, test_ip) = measure_latency(&test_inst.client).await;
                         
                         if active_instance.is_none() || (test_lat != NOT_CONNECTED && test_lat < active_lat) {
                             info!("✅ [{}] Swapping Router to new instance! (latency: {}ms)", name, test_lat.as_millis());
@@ -327,7 +333,7 @@ pub fn spawn_route_worker(
                                 tor_ip: test_ip.clone(),
                                 last_checked_at: Some(iso.clone()),
                             }).await;
-                            let _ = crate::config::update_route_state_by_name(&db_path, &name, test_ip.as_deref(), Some(&iso));
+                            let _ = crate::config::update_route_state_by_name(&db_pool, name.clone(), test_ip.clone(), Some(iso)).await;
                             
                             if let Some(old) = old_instance {
                                 old.stop();

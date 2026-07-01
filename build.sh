@@ -284,6 +284,21 @@ install_tor_deps() {
     fi
 }
 
+# ─── Install SQLite dependencies (libsqlite3-dev) ─────────────────────────
+install_sqlite_deps() {
+    log_info "Installing SQLite development dependencies (for rusqlite)..."
+    if command -v apt >/dev/null 2>&1 ; then
+        $SUDO apt update >/dev/null 2>&1 || true
+        $SUDO apt install -y libsqlite3-dev >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1 ; then
+        $SUDO yum install -y sqlite-devel >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1 ; then
+        $SUDO dnf install -y sqlite-devel >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1 ; then
+        $SUDO apk add sqlite-dev >/dev/null 2>&1 || true
+    fi
+}
+
 # ─── Check and install tools ────────────────────────────────────────────────
 check_tool() {
     if ! command -v "$1" ; then
@@ -337,6 +352,9 @@ if $BUILD_DAEMON; then
     
     # Check for cargo (will auto-install if missing)
     check_tool cargo
+    
+    # Install SQLite dependencies required by rusqlite (since bundled feature is removed)
+    install_sqlite_deps
     
     # Check for tor (will auto-install if missing, to satisfy libevent)
     check_tool tor
@@ -399,11 +417,6 @@ if $BUILD_DAEMON; then
 
     cp "$CARGO_OUT/$BIN_NAME" "$DIST_DIR/$OUT_NAME"
     chmod +x "$DIST_DIR/$OUT_NAME"
-    
-    # Strip binary to reduce size
-    if command -v strip ; then
-        strip "$DIST_DIR/$OUT_NAME"
-    fi
     
     log_ok "→ dist/$OUT_NAME  ($(du -sh "$DIST_DIR/$OUT_NAME" | cut -f1))"
 fi

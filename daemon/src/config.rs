@@ -143,11 +143,6 @@ pub fn init_db(db_path: &str) -> Result<()> {
 
 // ─── Route CRUD ──────────────────────────────────────────────────────────────
 
-pub fn load_from_db(db_path: &str) -> Result<Config> {
-    let conn = Connection::open(db_path)?;
-    load_from_db_conn(&conn)
-}
-
 pub fn load_from_db_conn(conn: &Connection) -> Result<Config> {
     let mut stmt = conn.prepare(
         "SELECT id, name, bind_address, input_port, username, password, country_code, swap_interval_minutes, test_interval_minutes, tor_ip, last_checked_at, restart_trigger FROM routes"
@@ -269,12 +264,14 @@ pub fn update_route_conn(conn: &Connection, id: i64, route: &RouteConfig) -> Res
     Ok(())
 }
 
-pub fn update_route_state_by_name(db_path: &str, name: &str, tor_ip: Option<&str>, last_checked_at: Option<&str>) -> Result<()> {
-    let conn = Connection::open(db_path)?;
-    conn.execute(
-        "UPDATE routes SET tor_ip = ?1, last_checked_at = ?2 WHERE name = ?3",
-        params![tor_ip, last_checked_at, name],
-    )?;
+pub async fn update_route_state_by_name(pool: &deadpool_sqlite::Pool, name: String, tor_ip: Option<String>, last_checked_at: Option<String>) -> Result<(), String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| {
+        c.execute(
+            "UPDATE routes SET tor_ip = ?1, last_checked_at = ?2 WHERE name = ?3",
+            params![tor_ip, last_checked_at, name],
+        )
+    }).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
     Ok(())
 }
 

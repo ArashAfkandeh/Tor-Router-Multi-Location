@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::PathBuf;
 use std::process;
@@ -23,7 +23,7 @@ use tracing_subscriber::reload::Handle;
 pub type LogHandle = Handle<EnvFilter, Registry>;
 
 lazy_static::lazy_static! {
-    pub static ref APP_LOGS: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    pub static ref APP_LOGS: Arc<RwLock<VecDeque<String>>> = Arc::new(RwLock::new(VecDeque::new()));
     pub static ref LOG_RELOAD_HANDLE: Arc<RwLock<Option<LogHandle>>> = Arc::new(RwLock::new(None));
 }
 
@@ -58,9 +58,9 @@ impl std::io::Write for AppLogger {
 
         let mut logs = APP_LOGS.write();
         if logs.len() > 1000 {
-            logs.remove(0);
+            logs.pop_front();
         }
-        logs.push(text);
+        logs.push_back(text);
         Ok(buf.len())
     }
 
@@ -248,17 +248,29 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
     let registry_tx = start_registry();
 
     let api_registry_tx = registry_tx.clone();
-    let db_for_api = abs_db_str.clone();
+    let db_pool = crate::config::create_pool(&abs_db_str);
+    let initial_config = async {
+        let conn = db_pool.get().await.map_err(|e| e.to_string())?;
+        conn.interact(|c| crate::config::load_from_db_conn(c)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+    }.await.unwrap_or_else(|_| crate::config::Config { routes: vec![] });
+    
+    let shared_config = Arc::new(RwLock::new(initial_config));
+
+    let initial_settings = crate::api::db_load_settings(&db_pool).await.unwrap_or_default();
+    let shared_settings = Arc::new(RwLock::new(initial_settings));
+
     let mut server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
     let mut web_handle: Option<tokio::task::JoinHandle<()>> = {
         let bind = api_bind.to_string();
         let tx = restart_tx.clone();
         let api_registry_tx = api_registry_tx.clone();
-        let db_for_api = db_for_api.clone();
+        let pool = db_pool.clone();
         let web_dir = web_dir.clone();
         let h = server_handle.clone();
+        let sc = shared_config.clone();
+        let ss = shared_settings.clone();
         Some(tokio::spawn(async move {
-            start_web_server(bind, tx, api_registry_tx, db_for_api, web_dir, h).await;
+            start_web_server(bind, tx, api_registry_tx, pool, sc, ss, web_dir, h).await;
         }))
     };
 
@@ -275,32 +287,28 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                             if let Some(h) = web_handle.take() {
                                 let _ = h.await;
                             }
-                            if let Ok(s) = crate::config::load_settings(&abs_db_str) {
-                                // Update log level dynamically
-                                crate::daemon::update_log_level(&s.log_level);
-                                
-                                let bind = format!("{}:{}", s.web_bind_address, s.web_panel_port);
-                                let bind_for_spawn = bind.clone();
-                                let tx = restart_tx.clone();
-                                let api_registry_tx = registry_tx.clone();
-                                let db_for_api = abs_db_str.clone();
-                                let web_dir = web_dir.clone();
-                                server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
-                                let h = server_handle.clone();
-                                web_handle = Some(tokio::spawn(async move {
-                                    start_web_server(bind_for_spawn, tx, api_registry_tx, db_for_api, web_dir, h).await;
-                                }));
-                                info!("✅ Web server respawned on {}", bind);
-                            } else {
-                                error!("❌ Failed to load settings for web restart");
-                            }
+                            let s = shared_settings.read().clone();
+                            // Update log level dynamically
+                            crate::daemon::update_log_level(&s.log_level);
+                            
+                            let bind = format!("{}:{}", s.web_bind_address, s.web_panel_port);
+                            let bind_for_spawn = bind.clone();
+                            let tx = restart_tx.clone();
+                            let api_registry_tx = registry_tx.clone();
+                            let pool = db_pool.clone();
+                            let web_dir = web_dir.clone();
+                            server_handle = axum_server::Handle::<std::net::SocketAddr>::new();
+                            let h = server_handle.clone();
+                            let sc = shared_config.clone();
+                            let ss = shared_settings.clone();
+                            web_handle = Some(tokio::spawn(async move {
+                                start_web_server(bind_for_spawn, tx, api_registry_tx, pool, sc, ss, web_dir, h).await;
+                            }));
+                            info!("✅ Web server respawned on {}", bind);
                             continue;
                         }
 
                         // For UI restart command (id != -1)
-                        // The user requested a manual restart of the route.
-                        // We will just change restart_trigger in DB or we can just stop it here.
-                        // If we stop it here, it will be respawned in next tick automatically.
                         if let Some(handles) = active_routes.write().remove(&id) {
                             let _ = registry_tx.send(RegistryMsg::Remove { id }).await;
                             info!("🔄 [Route {}] Stopping old process...", id);
@@ -310,18 +318,17 @@ pub async fn run_daemon(db_path: &str, api_bind: &str, web_dir: Option<String>) 
                     }
             }
             _ = ticker.tick() => {
-                if let Ok(config) = crate::config::load_from_db(&abs_db_str) {
-                    reload_config(
-                        config,
-                        active_routes.clone(),
-                        registry_tx.clone(),
-                        &tor_bin_path,
-                        &tor_data_dir_base,
-                        &geoip_path,
-                        &geoip6_path,
-                        &abs_db_str,
-                    ).await;
-                }
+                let config = shared_config.read().clone();
+                reload_config(
+                    config,
+                    active_routes.clone(),
+                    registry_tx.clone(),
+                    &tor_bin_path,
+                    &tor_data_dir_base,
+                    &geoip_path,
+                    &geoip6_path,
+                    db_pool.clone(),
+                ).await;
             }
         }
     }
@@ -335,7 +342,7 @@ async fn reload_config(
     tor_data_root: &PathBuf,
     geoip_path: &PathBuf,
     geoip6_path: &PathBuf,
-    db_path: &str,
+    db_pool: deadpool_sqlite::Pool,
 ) {
     let mut new_routes: HashMap<i64, RouteConfig> = HashMap::new();
     for mut r in config.routes {
@@ -385,7 +392,7 @@ async fn reload_config(
                     geoip_path.clone(),
                     geoip6_path.clone(),
                     registry_tx.clone(),
-                    db_path.to_string(),
+                    db_pool.clone(),
                     managed.slot.clone(),
                 );
                 worker_restarted = true;
@@ -420,7 +427,7 @@ async fn reload_config(
                 geoip_path.clone(),
                 geoip6_path.clone(),
                 registry_tx.clone(),
-                db_path.to_string(),
+                db_pool.clone(),
                 slot.clone(),
             );
             

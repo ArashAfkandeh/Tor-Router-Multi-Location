@@ -5,6 +5,10 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
+lazy_static::lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder().timeout(Duration::from_secs(6)).build().unwrap();
+}
+
 #[derive(Deserialize, Debug)]
 struct RouteStatus {
     name: String,
@@ -51,7 +55,7 @@ async fn auto_login(api_url: &str) -> Option<String> {
             "password": settings.admin_password
         });
         
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+        let client = HTTP_CLIENT.clone();
         if let Ok(res) = client.post(&format!("{}/api/login", api_url)).json(&payload).send().await {
             if res.status().is_success() {
                 if let Some(cookie) = res.headers().get(reqwest::header::SET_COOKIE) {
@@ -71,28 +75,27 @@ pub async fn run_cli(api_url_base: &str) {
     let mut api_url = api_url_base.trim_end_matches('/').to_string();
     let mut session_cookie: Option<String> = None;
 
-    loop {
-        // Refresh api_url from DB in case it was changed
-        let exe_path = std::env::current_exe().unwrap_or_default();
-        let dir = exe_path.parent().unwrap_or(std::path::Path::new("."));
-        let db_path = dir.join("tor_db.sqlite");
-        if let Ok(settings) = crate::config::load_settings(db_path.to_str().unwrap_or("tor_db.sqlite")) {
-            let has_domain = !settings.domain.as_deref().unwrap_or("").trim().is_empty();
-            let scheme = if settings.use_custom_cert || has_domain { "https" } else { "http" };
-            let mut connect_addr = settings.web_bind_address.clone();
-            if connect_addr == "0.0.0.0" {
-                connect_addr = "127.0.0.1".to_string();
-            }
-            if has_domain {
-                connect_addr = settings.domain.clone().unwrap();
-            }
-            let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
-            if !base_path.is_empty() && !base_path.starts_with('/') {
-                base_path = format!("/{}", base_path);
-            }
-            api_url = format!("{}://{}:{}{}", scheme, connect_addr, settings.web_panel_port, base_path);
+    let exe_path = std::env::current_exe().unwrap_or_default();
+    let dir = exe_path.parent().unwrap_or(std::path::Path::new("."));
+    let db_path = dir.join("tor_db.sqlite");
+    if let Ok(settings) = crate::config::load_settings(db_path.to_str().unwrap_or("tor_db.sqlite")) {
+        let has_domain = !settings.domain.as_deref().unwrap_or("").trim().is_empty();
+        let scheme = if settings.use_custom_cert || has_domain { "https" } else { "http" };
+        let mut connect_addr = settings.web_bind_address.clone();
+        if connect_addr == "0.0.0.0" {
+            connect_addr = "127.0.0.1".to_string();
         }
+        if has_domain {
+            connect_addr = settings.domain.clone().unwrap();
+        }
+        let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
+        if !base_path.is_empty() && !base_path.starts_with('/') {
+            base_path = format!("/{}", base_path);
+        }
+        api_url = format!("{}://{}:{}{}", scheme, connect_addr, settings.web_panel_port, base_path);
+    }
 
+    loop {
         if session_cookie.is_none() {
             session_cookie = auto_login(&api_url).await;
         }
@@ -225,7 +228,7 @@ async fn display_panel_info() {
 }
 
 async fn fetch_status(api_url: &str) -> Option<Vec<RouteStatus>> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     if let Ok(resp) = client.get(&format!("{}/status", api_url)).send().await {
         if let Ok(stats) = resp.json::<Vec<RouteStatus>>().await {
             return Some(stats);
@@ -236,7 +239,7 @@ async fn fetch_status(api_url: &str) -> Option<Vec<RouteStatus>> {
 
 async fn fetch_status_with_session(api_url: &str, session: Option<&str>) -> Option<Vec<RouteStatus>> {
     if let Some(cookie) = session {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+        let client = HTTP_CLIENT.clone();
         if let Ok(r) = client.get(&format!("{}/api/routes", api_url))
             .header(reqwest::header::COOKIE, cookie)
             .send().await
@@ -366,10 +369,7 @@ async fn view_live_status_loop(api_url: &str, session: Option<&str>) {
 }
 
 async fn probe_latency_for_route(api_url: &str, bind: &str, port: u16) -> String {
-    let client = match reqwest::Client::builder().timeout(Duration::from_secs(6)).build() {
-        Ok(c) => c,
-        Err(_) => return "Connecting/Error".to_string(),
-    };
+    let client = HTTP_CLIENT.clone();
     let url = format!("{}/probe?bind={}&port={}", api_url.trim_end_matches('/'), bind, port);
     if let Ok(resp) = client.get(&url).send().await {
         if resp.status().is_success() {
@@ -396,7 +396,7 @@ async fn restart_route(api_url: &str) {
 
     if name.is_empty() { return; }
 
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     let res = client.post(&format!("{}/restart?route={}", api_url, name)).send().await;
 
     match res {
@@ -412,7 +412,7 @@ async fn restart_route(api_url: &str) {
 async fn restart_all(api_url: &str) {
     if let Some(stats) = fetch_status(api_url).await {
         println!("\n\x1b[33m🔄 Restarting all routes...\x1b[0m");
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+        let client = HTTP_CLIENT.clone();
         for s in stats {
             if let Ok(r) = client.post(&format!("{}/restart?route={}", api_url, s.name)).send().await {
                 if r.status().is_success() {
@@ -438,7 +438,7 @@ async fn change_ports_with_session(api_url: &str, session: Option<&str>) {
     let port_input = port_input.trim();
     let port: u16 = if port_input.is_empty() { 3000 } else { port_input.parse().unwrap_or(3000) };
 
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     let payload = serde_json::json!({
         "web_panel_port": port,
         "api_port": port
@@ -484,7 +484,7 @@ async fn create_route_cli(api_url: &str, session: Option<&str>) {
         "test_interval_minutes": test,
     });
 
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     let mut req = client.post(&format!("{}/api/routes", api_url)).json(&payload);
     if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
     let res = req.send().await;
@@ -497,7 +497,7 @@ async fn create_route_cli(api_url: &str, session: Option<&str>) {
 }
 
 async fn edit_route_cli(api_url: &str, session: Option<&str>) {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     let mut req = client.get(&format!("{}/api/routes", api_url));
     if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
     let res = req.send().await;
@@ -544,7 +544,7 @@ async fn edit_route_cli(api_url: &str, session: Option<&str>) {
 }
 
 async fn delete_route_cli(api_url: &str, session: Option<&str>) {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     let mut req = client.get(&format!("{}/api/routes", api_url));
     if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
     let res = req.send().await;
@@ -582,7 +582,7 @@ async fn update_admin_credentials(api_url: &str, session: Option<&str>) {
         let final_base = if base == "-" { "".to_string() } else { base };
         payload.insert("web_base_path".to_string(), serde_json::Value::String(final_base)); 
     }
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap();
+    let client = HTTP_CLIENT.clone();
     let mut req = client.put(&format!("{}/api/settings", api_url)).json(&payload);
     if let Some(cookie) = session { req = req.header(reqwest::header::COOKIE, cookie); }
     let res = req.send().await;

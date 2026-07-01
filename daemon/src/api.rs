@@ -17,6 +17,9 @@ use crate::config::{self, RouteConfig, SettingsUpdate};
 // web restart is signalled via the daemon's restart channel; no exec/spawn here.
 use crate::daemon::{NodeStatus, RegistryMsg, NOT_CONNECTED};
 
+use parking_lot::RwLock;
+use std::sync::Arc;
+
 // ─── Shared state ────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -24,6 +27,8 @@ pub struct AppState {
     pub restart_tx: mpsc::Sender<i64>,
     pub registry_tx: mpsc::Sender<RegistryMsg>,
     pub pool: deadpool_sqlite::Pool,
+    pub shared_config: Arc<RwLock<crate::config::Config>>,
+    pub shared_settings: Arc<RwLock<crate::config::Settings>>,
 }
 
 // ─── Wire up the server ──────────────────────────────────────────────────────
@@ -32,15 +37,18 @@ pub async fn start_web_server(
     bind_addr: String,
     restart_tx: mpsc::Sender<i64>,
     registry_tx: mpsc::Sender<RegistryMsg>,
-    db_path: String,
+    pool: deadpool_sqlite::Pool,
+    shared_config: Arc<RwLock<crate::config::Config>>,
+    shared_settings: Arc<RwLock<crate::config::Settings>>,
     web_dir: Option<String>,
     server_handle: axum_server::Handle<std::net::SocketAddr>,
 ) {
-    let pool = config::create_pool(&db_path);
     let state = AppState {
         restart_tx,
         registry_tx,
         pool,
+        shared_config,
+        shared_settings: shared_settings.clone(),
     };
 
     // ── API routes ──────────────────────────────────────────────────────────
@@ -62,7 +70,7 @@ pub async fn start_web_server(
         .route("/probe",                   get(legacy_probe))
         .with_state(state.clone());
 
-    let settings = config::load_settings(&db_path).unwrap_or_default();
+    let settings = shared_settings.read().clone();
     
     let mut base_path = settings.web_base_path.trim().trim_end_matches('/').to_string();
     if !base_path.is_empty() && !base_path.starts_with('/') {
@@ -242,7 +250,7 @@ async fn login(
     State(state): State<AppState>,
     Json(body): Json<LoginRequest>,
 ) -> impl IntoResponse {
-    let settings = db_load_settings(&state.pool).await.unwrap_or_default();
+    let settings = state.shared_settings.read().clone();
 
     if body.username == settings.admin_username && body.password == settings.admin_password {
         let token = generate_token();
@@ -264,23 +272,23 @@ async fn login(
 // ─── Route status (the JSON the web panel displays) ──────────────────────────
 
 #[derive(Serialize)]
-struct RouteStatusResponse {
+struct RouteStatusResponse<'a> {
     id: String,
-    name: String,
-    bind_address: String,
+    name: &'a str,
+    bind_address: &'a str,
     input_port: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
-    username: Option<String>,
+    username: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    password: Option<String>,
+    password: Option<&'a str>,
     country_code: String,
     swap_interval_minutes: u64,
     test_interval_minutes: u64,
     latency: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tor_ip: Option<String>,
+    tor_ip: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    last_checked_at: Option<String>,
+    last_checked_at: Option<&'a str>,
     status: &'static str,
 }
 
@@ -300,29 +308,29 @@ fn latency_to_string(lat: Duration) -> String {
     }
 }
 
-fn node_to_response(cfg: &RouteConfig, node: Option<&NodeStatus>) -> RouteStatusResponse {
+fn node_to_response<'a>(cfg: &'a RouteConfig, node: Option<&'a NodeStatus>) -> RouteStatusResponse<'a> {
     let (lat, tor_ip, last_checked_at) = match node {
         Some(n) => (
             n.latency,
-            n.tor_ip.clone(),
-            n.last_checked_at.clone(),
+            n.tor_ip.as_deref(),
+            n.last_checked_at.as_deref(),
         ),
         None => (
             NOT_CONNECTED,
-            cfg.tor_ip.clone(),
-            cfg.last_checked_at.clone(),
+            cfg.tor_ip.as_deref(),
+            cfg.last_checked_at.as_deref(),
         ),
     };
     RouteStatusResponse {
         id:                   cfg.id.to_string(),
-        name:                 cfg.name.clone(),
-        bind_address:         cfg.bind_address.clone().unwrap_or_else(|| "127.0.0.0".to_string()),
+        name:                 &cfg.name,
+        bind_address:         cfg.bind_address.as_deref().unwrap_or("127.0.0.0"),
         input_port:           cfg.input_port,
-        username:             cfg.username.clone(),
-        password:             cfg.password.clone(),
+        username:             cfg.username.as_deref(),
+        password:             cfg.password.as_deref(),
         country_code:         cfg.country_code.to_uppercase(),
         swap_interval_minutes: cfg.swap_interval_minutes.unwrap_or(1440),
-        test_interval_minutes:cfg.test_interval_minutes.unwrap_or(15),
+        test_interval_minutes: cfg.test_interval_minutes.unwrap_or(15),
         latency:              latency_to_string(lat),
         tor_ip,
         last_checked_at,
@@ -338,10 +346,7 @@ async fn list_routes(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
 
-    let cfg = match db_load_from_db(&state.pool).await {
-        Ok(c) => c,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-    };
+    let cfg = state.shared_config.read().clone();
     
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let _ = state.registry_tx.send(RegistryMsg::GetAllStatus { reply: reply_tx }).await;
@@ -350,7 +355,13 @@ async fn list_routes(
     let list: Vec<RouteStatusResponse> = cfg.routes.iter()
         .map(|r| node_to_response(r, nodes.get(&r.id)))
         .collect();
-    Json(list).into_response()
+        
+    let minified = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+    (
+        axum::http::StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        minified,
+    ).into_response()
 }
 
 // Body the panel sends when creating/editing a route
@@ -391,9 +402,13 @@ async fn create_route_handler(
     Json(body): Json<RouteBody>,
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
-    let route: RouteConfig = body.into();
-    match db_create_route(&state.pool, route).await {
-        Ok(id) => Json(serde_json::json!({ "id": id.to_string(), "ok": true })).into_response(),
+    let mut route: RouteConfig = body.into();
+    match db_create_route(&state.pool, route.clone()).await {
+        Ok(id) => {
+            route.id = id;
+            state.shared_config.write().routes.push(route);
+            Json(serde_json::json!({ "id": id.to_string(), "ok": true })).into_response()
+        },
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
@@ -415,10 +430,17 @@ async fn update_route_handler(
     // Preserve old restart_trigger
     if let Ok(old_r) = db_get_route_by_id(&state.pool, id).await {
         route.restart_trigger = old_r.restart_trigger;
+        route.tor_ip = old_r.tor_ip;
+        route.last_checked_at = old_r.last_checked_at;
     }
 
-    if let Err(e) = db_update_route(&state.pool, id, route).await {
+    if let Err(e) = db_update_route(&state.pool, id, route.clone()).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+    }
+    
+    route.id = id;
+    if let Some(r) = state.shared_config.write().routes.iter_mut().find(|r| r.id == id) {
+        *r = route;
     }
 
     Json(serde_json::json!({ "ok": true })).into_response()
@@ -439,7 +461,10 @@ async fn delete_route_handler(
     let _ = state.restart_tx.try_send(id);
 
     match db_delete_route(&state.pool, id).await {
-        Ok(_) => Json(serde_json::json!({ "ok": true })).into_response(),
+        Ok(_) => {
+            state.shared_config.write().routes.retain(|r| r.id != id);
+            Json(serde_json::json!({ "ok": true })).into_response()
+        },
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
@@ -460,6 +485,9 @@ async fn restart_by_id_handler(
         Ok(mut route) => {
             route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
             let _ = db_update_route(&state.pool, id, route.clone()).await;
+            if let Some(r) = state.shared_config.write().routes.iter_mut().find(|r| r.id == id) {
+                r.restart_trigger = route.restart_trigger.clone();
+            }
             Json(serde_json::json!({ "ok": true, "name": route.name })).into_response()
         }
         Err(_) => (StatusCode::NOT_FOUND, "Route not found").into_response(),
@@ -472,13 +500,18 @@ async fn restart_all_handler(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
     let mut count = 0;
-    if let Ok(mut cfg) = db_load_from_db(&state.pool).await {
-        for route in &mut cfg.routes {
-            route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
-            let _ = db_update_route(&state.pool, route.id, route.clone()).await;
-            count += 1;
+    
+    let routes = state.shared_config.read().routes.clone();
+    
+    for mut route in routes {
+        route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
+        let _ = db_update_route(&state.pool, route.id, route.clone()).await;
+        count += 1;
+        if let Some(r) = state.shared_config.write().routes.iter_mut().find(|r| r.id == route.id) {
+            r.restart_trigger = route.restart_trigger.clone();
         }
     }
+    
     Json(serde_json::json!({ "ok": true, "restarted": count })).into_response()
 }
 
@@ -489,22 +522,20 @@ async fn get_settings_handler(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
-    match db_load_settings(&state.pool).await {
-        Ok(s) => Json(serde_json::json!({
-            "web_panel_port":   s.web_panel_port,
-            "web_bind_address": s.web_bind_address,
-            "api_port":         s.api_port,
-            "domain":           s.domain,
-            "use_custom_cert":  s.use_custom_cert,
-            "custom_cert_path": s.custom_cert_path,
-            "custom_key_path":  s.custom_key_path,
-            "web_base_path":    s.web_base_path,
-            "log_level":        s.log_level,
-            "admin_username":   s.admin_username,
-            "admin_password":   s.admin_password,
-        })).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    }
+    let s = state.shared_settings.read().clone();
+    Json(serde_json::json!({
+        "web_panel_port":   s.web_panel_port,
+        "web_bind_address": s.web_bind_address,
+        "api_port":         s.api_port,
+        "domain":           s.domain,
+        "use_custom_cert":  s.use_custom_cert,
+        "custom_cert_path": s.custom_cert_path,
+        "custom_key_path":  s.custom_key_path,
+        "web_base_path":    s.web_base_path,
+        "log_level":        s.log_level,
+        "admin_username":   s.admin_username,
+        "admin_password":   s.admin_password,
+    })).into_response()
 }
 
 async fn save_settings_handler(
@@ -513,7 +544,7 @@ async fn save_settings_handler(
     Json(update): Json<SettingsUpdate>,
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
-    let mut settings = db_load_settings(&state.pool).await.unwrap_or_default();
+    let mut settings = state.shared_settings.read().clone();
     if let Some(p) = update.web_panel_port   { settings.web_panel_port   = p; }
     if let Some(a) = update.web_bind_address { settings.web_bind_address = a; }
     if let Some(p) = update.api_port         { settings.api_port         = p; }
@@ -527,6 +558,7 @@ async fn save_settings_handler(
     settings.domain     = update.domain;
     match db_save_settings(&state.pool, settings.clone()).await {
         Ok(_) => {
+            *state.shared_settings.write() = settings.clone();
             // Signal run_daemon to only restart the web server (do not stop Tor routes)
             let _ = state.restart_tx.send(crate::daemon::WEB_RESTART_SIGNAL).await;
             let mut response = Json(serde_json::json!({
@@ -551,18 +583,21 @@ async fn legacy_restart(
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<LegacyRestartQuery>,
 ) -> impl IntoResponse {
-    if let Ok(cfg) = db_load_from_db(&state.pool).await {
-        if let Some(mut route) = cfg.routes.into_iter().find(|r| r.name == q.route) {
-            route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
-            let _ = db_update_route(&state.pool, route.id, route.clone()).await;
-            return (StatusCode::OK, format!("Restart triggered for {}\n", q.route));
+    let cfg = state.shared_config.read().clone();
+    if let Some(mut route) = cfg.routes.into_iter().find(|r| r.name == q.route) {
+        route.restart_trigger = Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string());
+        let _ = db_update_route(&state.pool, route.id, route.clone()).await;
+        // Update shared config as well
+        if let Some(r) = state.shared_config.write().routes.iter_mut().find(|r| r.id == route.id) {
+            r.restart_trigger = route.restart_trigger.clone();
         }
+        return (StatusCode::OK, format!("Restart triggered for {}\n", q.route));
     }
     (StatusCode::SERVICE_UNAVAILABLE, "System busy or route not found\n".to_string())
 }
 
 async fn legacy_status(State(state): State<AppState>) -> impl IntoResponse {
-    let cfg = db_load_from_db(&state.pool).await.unwrap_or(crate::config::Config { routes: vec![] });
+    let cfg = state.shared_config.read().clone();
     
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let _ = state.registry_tx.send(RegistryMsg::GetAllStatus { reply: reply_tx }).await;
@@ -571,7 +606,13 @@ async fn legacy_status(State(state): State<AppState>) -> impl IntoResponse {
     let list: Vec<RouteStatusResponse> = cfg.routes.iter()
         .map(|r| node_to_response(r, nodes.get(&r.id)))
         .collect();
-    Json(list)
+        
+    let minified = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+    (
+        axum::http::StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        minified,
+    ).into_response()
 }
 
 #[derive(Deserialize)]
@@ -586,7 +627,7 @@ async fn legacy_probe(Query(q): Query<ProbeQuery>) -> impl IntoResponse {
         connect_bind = "127.0.0.1";
     }
     let proxy_url = format!("socks5h://{}:{}", connect_bind, q.port);
-    let (lat, ip) = crate::tor_process::measure_latency(&proxy_url).await;
+    let (lat, ip) = crate::tor_process::measure_latency_with_proxy(&proxy_url).await;
     let lat_str = latency_to_string(lat);
     Json(serde_json::json!({ "latency": lat_str, "tor_ip": ip }))
 }
@@ -622,17 +663,36 @@ async fn probe_route_handler(
     } else {
         format!("socks5h://{}:{}", connect_bind, route.input_port)
     };
-    let (lat, ip) = crate::tor_process::measure_latency(&proxy_url).await;
+    let (lat, ip) = crate::tor_process::measure_latency_with_proxy(&proxy_url).await;
     let lat_str = latency_to_string(lat);
 
     Json(serde_json::json!({ "latency": lat_str, "tor_ip": ip })).into_response()
+}
+
+use std::time::Instant;
+
+lazy_static::lazy_static! {
+    static ref COUNTRIES_CACHE: tokio::sync::RwLock<Option<(Instant, String)>> = tokio::sync::RwLock::new(None);
+    static ref HTTP_CLIENT_API: reqwest::Client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap();
 }
 
 async fn get_countries(
     State(_state): State<AppState>,
     _headers: HeaderMap,
 ) -> impl IntoResponse {
-    let client = reqwest::Client::new();
+    {
+        let cache = COUNTRIES_CACHE.read().await;
+        if let Some((timestamp, data)) = &*cache {
+            if timestamp.elapsed() < Duration::from_secs(3600) {
+                return (
+                    axum::http::StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    data.clone(),
+                ).into_response();
+            }
+        }
+    }
+
     let url = "https://onionoo.torproject.org/details?running=true&flag=Exit";
 
     #[derive(serde::Deserialize, serde::Serialize)]
@@ -646,12 +706,14 @@ async fn get_countries(
         country: Option<String>,
     }
 
-    if let Ok(res) = client.get(url).send().await {
+    if let Ok(res) = HTTP_CLIENT_API.get(url).send().await {
         if let Ok(text) = res.text().await {
             if let Ok(mut parsed) = serde_json::from_str::<OnionooResponse>(&text) {
                 // Keep only relays that have a country code to save space
                 parsed.relays.retain(|r| r.country.is_some());
                 if let Ok(minified) = serde_json::to_string(&parsed) {
+                    let mut cache = COUNTRIES_CACHE.write().await;
+                    *cache = Some((Instant::now(), minified.clone()));
                     return (
                         axum::http::StatusCode::OK,
                         [(axum::http::header::CONTENT_TYPE, "application/json")],
@@ -671,13 +733,19 @@ async fn get_logs(
 ) -> impl IntoResponse {
     if let Err(e) = require_auth(&state, &headers) { return e.into_response(); }
     
-    let logs = crate::daemon::APP_LOGS.read().clone();
-    (StatusCode::OK, Json(serde_json::json!({ "logs": logs }))).into_response()
+    let guard = crate::daemon::APP_LOGS.read();
+    let minified = serde_json::to_string(&serde_json::json!({ "logs": &*guard })).unwrap_or_else(|_| "{}".to_string());
+    
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        minified,
+    ).into_response()
 }
 
 // ─── Async DB Wrappers ───────────────────────────────────────────────────────
 
-async fn db_load_settings(pool: &deadpool_sqlite::Pool) -> Result<config::Settings, String> {
+pub async fn db_load_settings(pool: &deadpool_sqlite::Pool) -> Result<config::Settings, String> {
     let conn = pool.get().await.map_err(|e| e.to_string())?;
     conn.interact(|c| config::load_settings_conn(c)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
@@ -685,11 +753,6 @@ async fn db_load_settings(pool: &deadpool_sqlite::Pool) -> Result<config::Settin
 async fn db_save_settings(pool: &deadpool_sqlite::Pool, settings: config::Settings) -> Result<(), String> {
     let conn = pool.get().await.map_err(|e| e.to_string())?;
     conn.interact(move |c| config::save_settings_conn(c, &settings)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
-}
-
-async fn db_load_from_db(pool: &deadpool_sqlite::Pool) -> Result<config::Config, String> {
-    let conn = pool.get().await.map_err(|e| e.to_string())?;
-    conn.interact(|c| config::load_from_db_conn(c)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
 
 async fn db_get_route_by_id(pool: &deadpool_sqlite::Pool, id: i64) -> Result<RouteConfig, String> {
@@ -711,4 +774,3 @@ async fn db_delete_route(pool: &deadpool_sqlite::Pool, id: i64) -> Result<(), St
     let conn = pool.get().await.map_err(|e| e.to_string())?;
     conn.interact(move |c| config::delete_route_conn(c, id)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
-
