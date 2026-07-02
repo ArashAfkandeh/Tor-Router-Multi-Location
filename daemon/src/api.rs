@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use axum::{
-    extract::{Path, State, Query},
+    extract::{Path, State, Query, ws::{WebSocketUpgrade, WebSocket, Message}},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post, put},
@@ -64,6 +64,7 @@ pub async fn start_web_server(
         .route("/api/settings",            get(get_settings_handler).put(save_settings_handler))
         .route("/api/countries",           get(get_countries))
         .route("/api/logs",                get(get_logs))
+        .route("/api/ws",                  get(ws_handler))
         // Legacy CLI endpoint – keep backward-compat
         .route("/restart",                 post(legacy_restart))
         .route("/status",                  get(legacy_status))
@@ -677,6 +678,19 @@ async fn probe_route_handler(
     };
     let (lat, ip) = crate::tor_process::measure_latency_with_proxy(&proxy_url).await;
     let lat_str = latency_to_string(lat);
+    let iso = crate::tor_process::now_iso();
+    let _ = state.registry_tx.send(crate::daemon::RegistryMsg::UpdateStatus {
+        id,
+        latency: lat,
+        tor_ip: ip.clone(),
+        last_checked_at: Some(iso.clone()),
+    }).await;
+    let _ = crate::config::update_route_state_by_id(&state.pool, id, ip.clone(), Some(iso.clone())).await;
+
+    if let Some(r) = state.shared_config.write().routes.iter_mut().find(|r| r.id == id) {
+        r.tor_ip = ip.clone();
+        r.last_checked_at = Some(iso);
+    }
 
     Json(serde_json::json!({ "latency": lat_str, "tor_ip": ip })).into_response()
 }
@@ -689,7 +703,7 @@ lazy_static::lazy_static! {
 }
 
 async fn get_countries(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     _headers: HeaderMap,
 ) -> impl IntoResponse {
     {
@@ -703,6 +717,17 @@ async fn get_countries(
                 ).into_response();
             }
         }
+    }
+
+    // Try DB persistent cache first
+    if let Ok(Some(data)) = db_get_cache(&state.pool, "onionoo_countries".to_string()).await {
+        // Hydrate memory cache
+        *COUNTRIES_CACHE.write().await = Some((Instant::now(), data.clone()));
+        return (
+            axum::http::StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            data,
+        ).into_response();
     }
 
     let url = "https://onionoo.torproject.org/details?running=true&flag=Exit";
@@ -724,8 +749,9 @@ async fn get_countries(
                 // Keep only relays that have a country code to save space
                 parsed.relays.retain(|r| r.country.is_some());
                 if let Ok(minified) = serde_json::to_string(&parsed) {
-                    let mut cache = COUNTRIES_CACHE.write().await;
-                    *cache = Some((Instant::now(), minified.clone()));
+                    *COUNTRIES_CACHE.write().await = Some((Instant::now(), minified.clone()));
+                    // Save to DB cache for 1 hour (3600 secs)
+                    let _ = db_set_cache(&state.pool, "onionoo_countries".to_string(), minified.clone(), 3600).await;
                     return (
                         axum::http::StatusCode::OK,
                         [(axum::http::header::CONTENT_TYPE, "application/json")],
@@ -755,6 +781,54 @@ async fn get_logs(
     ).into_response()
 }
 
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let token = extract_session(&headers).unwrap_or_default();
+    if jsonwebtoken::decode::<Claims>(&token, &JWT_DECODING_KEY, &JWT_VALIDATION).is_err() {
+        return (StatusCode::UNAUTHORIZED, "Invalid or missing token").into_response();
+    }
+    ws.on_upgrade(move |socket| handle_ws(socket, state))
+}
+
+async fn handle_ws(mut socket: WebSocket, state: AppState) {
+    let mut interval = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                let logs = crate::daemon::APP_LOGS.read().clone();
+                let cfg = state.shared_config.read().clone();
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                let _ = state.registry_tx.send(RegistryMsg::GetAllStatus { reply: reply_tx }).await;
+                let nodes = reply_rx.await.unwrap_or_default();
+                let list: Vec<RouteStatusResponse> = cfg.routes.iter()
+                    .map(|r| node_to_response(r, nodes.get(&r.id)))
+                    .collect();
+                
+                let payload = serde_json::json!({
+                    "logs": logs,
+                    "routes": list
+                });
+                if let Ok(text) = serde_json::to_string(&payload) {
+                    if socket.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            msg = socket.recv() => {
+                if let Some(Ok(Message::Close(_))) = msg {
+                    break;
+                }
+                if msg.is_none() {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 // ─── Async DB Wrappers ───────────────────────────────────────────────────────
 
 pub async fn db_load_settings(pool: &deadpool_sqlite::Pool) -> Result<config::Settings, String> {
@@ -780,6 +854,16 @@ async fn db_create_route(pool: &deadpool_sqlite::Pool, route: RouteConfig) -> Re
 async fn db_update_route(pool: &deadpool_sqlite::Pool, id: i64, route: RouteConfig) -> Result<(), String> {
     let conn = pool.get().await.map_err(|e| e.to_string())?;
     conn.interact(move |c| config::update_route_conn(c, id, &route)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_get_cache(pool: &deadpool_sqlite::Pool, key: String) -> Result<Option<String>, String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::get_cache_conn(c, &key)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
+async fn db_set_cache(pool: &deadpool_sqlite::Pool, key: String, value: String, ttl: u64) -> Result<(), String> {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    conn.interact(move |c| config::set_cache_conn(c, &key, &value, ttl)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
 
 async fn db_delete_route(pool: &deadpool_sqlite::Pool, id: i64) -> Result<(), String> {

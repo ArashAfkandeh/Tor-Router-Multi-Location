@@ -21,22 +21,65 @@ Alpine.store('app', {
     isAuthenticated: false,
     nodes: [],
     metrics: { total: 0, healthy: 0, error: 0 },
+    ws: null,
     
     init() {
         this.applyTheme();
         this.checkAuth();
+    },
+
+    connectWs() {
+        if (this.ws) return;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        let basePath = window.location.pathname;
+        if (basePath.endsWith('.html') || basePath.endsWith('.htm')) basePath = basePath.substring(0, basePath.lastIndexOf('/'));
+        if (basePath.endsWith('/')) basePath = basePath.substring(0, basePath.length - 1);
         
-        setInterval(() => {
-            if (this.isAuthenticated && !document.hidden) {
-                this.fetchNodes();
-            }
-        }, 10000);
+        const wsUrl = `${protocol}//${window.location.host}${basePath}/api/ws`;
         
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && this.isAuthenticated) {
-                this.fetchNodes();
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                if (payload.routes) {
+                    const localNodesMap = {};
+                    if (this.nodes) {
+                        this.nodes.forEach(n => { localNodesMap[n.id] = n; });
+                    }
+                    
+                    this.nodes = payload.routes.map(serverNode => {
+                        const localNode = localNodesMap[serverNode.id];
+                        if (localNode && localNode._frontendProbed) {
+                            serverNode.latency = localNode.latency;
+                            serverNode.status = localNode.status;
+                            if (localNode.tor_ip) serverNode.tor_ip = localNode.tor_ip;
+                            serverNode._frontendProbed = true;
+                        }
+                        return serverNode;
+                    });
+                    
+                    this.metrics.total = this.nodes.length;
+                    this.metrics.healthy = this.nodes.filter(n => n.status === 'healthy').length;
+                    this.metrics.error = this.nodes.filter(n => n.status === 'error').length;
+                }
+                if (payload.logs) {
+                    const logsArray = Array.isArray(payload.logs) ? payload.logs : payload.logs.split('\n');
+                    const filtered = logsArray.filter(l => l && l.trim().length > 0);
+                    // Emit a custom event so the logs modal can update itself without polling
+                    window.dispatchEvent(new CustomEvent('logs-updated', { detail: filtered }));
+                }
+            } catch (e) {
+                console.error('Failed to parse WS message', e);
             }
-        });
+        };
+
+        this.ws.onclose = () => {
+            this.ws = null;
+            if (this.isAuthenticated) {
+                setTimeout(() => this.connectWs(), 3000);
+            }
+        };
     },
     
     t(key) {
@@ -68,6 +111,8 @@ Alpine.store('app', {
         this.isAuthenticated = isAuth;
         if (isAuth) {
             this.fetchNodes();
+            this.connectWs();
+            this.startPeriodicFetch();
         }
     },
     
@@ -78,6 +123,8 @@ Alpine.store('app', {
         } else {
             this.isAuthenticated = true;
             this.fetchNodes();
+            this.connectWs();
+            this.startPeriodicFetch();
         }
     },
     
@@ -85,6 +132,23 @@ Alpine.store('app', {
         auth.logout();
         this.isAuthenticated = false;
         this.nodes = [];
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        if (this.fetchInterval) {
+            clearInterval(this.fetchInterval);
+            this.fetchInterval = null;
+        }
+    },
+    
+    startPeriodicFetch() {
+        if (this.fetchInterval) clearInterval(this.fetchInterval);
+        this.fetchInterval = setInterval(() => {
+            if (this.isAuthenticated) {
+                this.fetchNodes();
+            }
+        }, 15000); // 15 seconds
     },
     
     async fetchNodes() {

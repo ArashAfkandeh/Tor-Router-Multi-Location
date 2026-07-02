@@ -8,7 +8,7 @@ tokio       = { version = "1",  features = ["rt-multi-thread","net","io-util","p
 tokio-stream = "0.1"
 serde       = { version = "1.0",   features = ["derive"] }
 serde_json  = "1.0"
-axum        = "0.8"
+axum        = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 rustls-acme = { version = "0.15.3", features = ["axum"] }
 tower-http  = { version = "0.7",   features = ["fs", "set-header"] }

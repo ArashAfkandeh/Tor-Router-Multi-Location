@@ -1,8 +1,9 @@
 <!doctype html>
 <html
   lang="en"
-  class="h-full"
+  class="h-full bg-slate-50 dark:bg-slate-900"
   x-data
+  :class="$store.app.theme"
   :dir="$store.app.lang === 'fa' ? 'rtl' : 'ltr'"
 >
   <head>
@@ -1385,22 +1386,22 @@
                         logs: [],
                         levelFilter: 'ALL',
                         loading: false,
-                        async fetchLogs() {
-                            this.loading = true;
-                            const res = await window.logsService.fetchLogs();
-                            if (!res.error && res.data) {
-                                this.logs = Array.isArray(res.data.logs) ? res.data.logs.filter(l => l && l.trim().length > 0) : res.data.logs.split('\n').filter(l => l && l.trim().length > 0);
-                            }
-                            this.loading = false;
-                            this.$nextTick(() => {
-                                const container = this.$refs.logsContainer;
-                                if(container) container.scrollTop = container.scrollHeight;
-                            });
-                        },
                         init() {
                             this.$watch('logsModalOpen', val => {
-                                if (val) this.fetchLogs();
+                                // Initially, logs will be populated by the WS event but we can let it wait
                             });
+                        },
+                        handleWsUpdate(e) {
+                            if (e.detail && e.detail.length) {
+                                this.logs = e.detail;
+                                this.$nextTick(() => {
+                                    const container = this.$refs.logsContainer;
+                                    // only auto-scroll if we are already near the bottom
+                                    if(container && (container.scrollHeight - container.scrollTop - container.clientHeight < 50)) {
+                                        container.scrollTop = container.scrollHeight;
+                                    }
+                                });
+                            }
                         },
                         get filteredLogs() {
                             if (this.levelFilter === 'ALL') return this.logs;
@@ -1411,6 +1412,7 @@
                             $store.toast.show($store.app.t('copied_to_clipboard'), 'success');
                         }
                     }"
+              @logs-updated.window="handleWsUpdate($event)"
             >
               <div
                 class="px-6 py-3 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between gap-4"

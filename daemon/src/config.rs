@@ -120,6 +120,11 @@ pub fn init_db(db_path: &str) -> Result<()> {
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS cache_kv (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
     ")?;
 
     // Migrate existing DBs that may lack the new columns.
@@ -347,5 +352,29 @@ pub fn save_settings_conn(conn: &Connection, s: &Settings) -> Result<()> {
             params![k, v],
         )?;
     }
+    Ok(())
+}
+
+// ─── Cache CRUD ──────────────────────────────────────────────────────────────
+
+pub fn get_cache_conn(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let mut stmt = conn.prepare("SELECT value FROM cache_kv WHERE key = ?1 AND expires_at > ?2")?;
+    let mut rows = stmt.query(params![key, now])?;
+    if let Some(row) = rows.next()? {
+        let value: String = row.get(0)?;
+        Ok(Some(value))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn set_cache_conn(conn: &Connection, key: &str, value: &str, ttl_secs: u64) -> Result<()> {
+    let expires_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 + ttl_secs as i64;
+    conn.execute(
+        "INSERT INTO cache_kv (key, value, expires_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at",
+        params![key, value, expires_at],
+    )?;
     Ok(())
 }

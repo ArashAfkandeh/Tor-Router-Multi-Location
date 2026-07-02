@@ -166,7 +166,7 @@ pub async fn run_cli(api_url_base: &str) {
             }
             _ => {
                 println!("\x1b[31m⚠️ Invalid option!\x1b[0m");
-                thread::sleep(Duration::from_secs(1));
+                tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
     }
@@ -363,7 +363,7 @@ async fn view_live_status_loop(api_url: &str, session: Option<&str>) {
         // Sleep for 10s or until stop requested
         for _ in 0..10 {
             if stop.load(Ordering::SeqCst) { break; }
-            thread::sleep(std::time::Duration::from_secs(1));
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     }
 }
@@ -421,7 +421,7 @@ async fn restart_all(api_url: &str) {
             } else {
                 println!("❌ Failed to restart {}", s.name);
             }
-            thread::sleep(Duration::from_millis(500));
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
         println!("\n\x1b[32m🎉 All available routes restarted!\x1b[0m");
     }
